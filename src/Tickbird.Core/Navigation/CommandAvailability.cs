@@ -1,4 +1,5 @@
 using Tickbird.Core.Data;
+using Tickbird.Core.Providers;
 
 namespace Tickbird.Core.Navigation;
 
@@ -29,10 +30,20 @@ public sealed record CommandAvailability
     public bool CommentQuery { get; init; }
     public bool OpenSaveQuery { get; init; }
 
+    /// <summary>For an InfluxDB server generation (kept for callers that only know the old setting).</summary>
     public static CommandAvailability For(NodeKind kind, string? nodeName, InfluxDbServerVersion? serverVersion,
+        bool requestTabSelected, bool queryTabSelected) =>
+        For(kind, nodeName, DatabaseProfiles.For(serverVersion), requestTabSelected, queryTabSelected);
+
+    /// <summary>
+    /// Which commands are enabled for the selected node. What a connection can do comes from its database
+    /// <paramref name="profile"/> (null means InfluxDB 1.x), so a new database needs no change here.
+    /// </summary>
+    public static CommandAvailability For(NodeKind kind, string? nodeName, DatabaseProfile? profile,
         bool requestTabSelected, bool queryTabSelected)
     {
-        var v1 = serverVersion == null || serverVersion == InfluxDbServerVersion.InfluxDb1;
+        profile ??= DatabaseProfiles.Get(DatabaseKind.InfluxDb1);
+        bool Can(DatabaseCapabilities capability) => profile.Supports(capability);
         var has = kind is NodeKind.Connection or NodeKind.Database or NodeKind.Measurement;
         var conn = kind == NodeKind.Connection;
         var db = kind == NodeKind.Database;
@@ -42,21 +53,21 @@ public sealed record CommandAvailability
             Disconnect = has,
             Refresh = conn || db,
             NewQuery = db || meas,
-            ShowQueries = conn && v1,
-            ShowPolicies = conn && v1,
-            ShowUsers = conn && v1,
-            ShowStats = conn && v1,
-            ShowDiagnostics = conn && v1,
-            CreateDatabase = conn,
-            ContinuousQueries = db && v1,
-            Backfill = db && v1,
-            DropDatabase = db && nodeName != "_internal",
-            TagKeys = meas,
-            TagValues = meas,
-            FieldKeys = meas,
-            ShowSeries = meas && v1,
-            DropSeries = meas && v1,
-            DropMeasurement = meas,
+            ShowQueries = conn && Can(DatabaseCapabilities.RunningQueries),
+            ShowPolicies = conn && Can(DatabaseCapabilities.RetentionPolicies),
+            ShowUsers = conn && Can(DatabaseCapabilities.Users),
+            ShowStats = conn && Can(DatabaseCapabilities.Statistics),
+            ShowDiagnostics = conn && Can(DatabaseCapabilities.Diagnostics),
+            CreateDatabase = conn && Can(DatabaseCapabilities.CreateDatabase),
+            ContinuousQueries = db && Can(DatabaseCapabilities.ContinuousQueries),
+            Backfill = db && Can(DatabaseCapabilities.Backfill),
+            DropDatabase = db && Can(DatabaseCapabilities.DropDatabase) && !profile.IsSystemDatabase(nodeName),
+            TagKeys = meas && Can(DatabaseCapabilities.TagKeys),
+            TagValues = meas && Can(DatabaseCapabilities.TagValues),
+            FieldKeys = meas && Can(DatabaseCapabilities.FieldKeys),
+            ShowSeries = meas && Can(DatabaseCapabilities.Series),
+            DropSeries = meas && Can(DatabaseCapabilities.DropSeries),
+            DropMeasurement = meas && Can(DatabaseCapabilities.DropMeasurement),
             RunQuery = requestTabSelected,
             CommentQuery = queryTabSelected,
             OpenSaveQuery = queryTabSelected,

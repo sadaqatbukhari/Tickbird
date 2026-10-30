@@ -128,7 +128,7 @@ public sealed class QueryView : RequestView
     }
 
     /// <summary>Loads the whole database schema (shared cache); set by the main window.</summary>
-    public Func<Task<IReadOnlyList<InfluxDbMeasurementSchema>>>? SchemaLoader { get; set; }
+    public Func<Task<IReadOnlyList<MeasurementSchema>>>? SchemaLoader { get; set; }
 
     /// <summary>Loads the values of a tag in a measurement (shared cache); set by the main window.</summary>
     public Func<string, string, Task<IReadOnlyList<string>>>? TagValueLoader { get; set; }
@@ -183,10 +183,10 @@ public sealed class QueryView : RequestView
         running = cancel;
         stopRequested = false;
         SetRunning(true);
-        List<InfluxDbSeries> allResults;
+        List<ResultSeries> allResults;
         try
         {
-            allResults = ((await Client.QueryAsync(Database, query, cancel.Token)) ?? Enumerable.Empty<InfluxDbSeries>()).ToList();
+            allResults = ((await Client.QueryAsync(Database, query, cancel.Token)) ?? Enumerable.Empty<ResultSeries>()).ToList();
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
@@ -443,7 +443,7 @@ public sealed class QueryView : RequestView
             current = after;
         }
 
-        var items = completion.GetTagValueItems(Client?.Connection.ServerVersion, sources, current.Tag).ToList();
+        var items = completion.GetTagValueItems(Client?.Connection.Profile, sources, current.Tag).ToList();
         var typed = current.Context.Prefix;
         if (typed.Length > 0) items = items.Where(i => i.Text.Contains(typed, StringComparison.OrdinalIgnoreCase)).ToList();
         if (items.Count == 0) return;
@@ -517,7 +517,7 @@ public sealed class QueryView : RequestView
         var text = editor.Document.GetText(0, caret);
         var start = CompletionTrigger.WordStart(text, caret);
         var prefix = text[start..].TrimStart('"');
-        var items = completion.GetItems(Client?.Connection.ServerVersion, editor.Text, text[..start]).ToList();
+        var items = completion.GetItems(Client?.Connection.Profile, editor.Text, text[..start]).ToList();
         if (prefix.Length > 0)
         {
             // Open only when something matches what was typed.

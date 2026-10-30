@@ -9,7 +9,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// Stores information about a presently running query on the InfluxDB server.
     /// </summary>
-    public class InfluxDbRunningQuery
+    public class RunningQuery
     {
         #region Fields
 
@@ -41,7 +41,7 @@ namespace Tickbird.Core.Data
 
         #region Constructors
 
-        public InfluxDbRunningQuery(int pid, string database, string durartion, string query)
+        public RunningQuery(int pid, string database, string durartion, string query)
         {
             PID = pid;
             Database = database;

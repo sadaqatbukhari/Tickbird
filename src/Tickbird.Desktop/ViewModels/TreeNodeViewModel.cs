@@ -14,12 +14,12 @@ public sealed class TreeNodeViewModel : ViewModelBase
     private bool isExpanded;
     private bool isShown = true;
 
-    public TreeNodeViewModel(string name, NodeKind kind, TreeNodeViewModel? parent = null, InfluxDbConnection? connection = null)
+    public TreeNodeViewModel(string name, NodeKind kind, TreeNodeViewModel? parent = null, DatabaseConnection? connection = null)
     {
         this.name = name; Kind = kind; Parent = parent; this.connection = connection;
     }
 
-    private readonly InfluxDbConnection? connection;
+    private readonly DatabaseConnection? connection;
 
     public string Name { get => name; set => Set(ref name, value); }
     public NodeKind Kind { get; }
@@ -37,7 +37,7 @@ public sealed class TreeNodeViewModel : ViewModelBase
     /// <summary>True for nodes that belong to a server (connection, database, measurement).</summary>
     public bool HasConnection => Kind is NodeKind.Connection or NodeKind.Database or NodeKind.Measurement;
 
-    public InfluxDbConnection Connection => connection ?? Parent?.Connection ?? throw new InvalidOperationException("Node has no connection.");
+    public DatabaseConnection Connection => connection ?? Parent?.Connection ?? throw new InvalidOperationException("Node has no connection.");
 
     public string IconName => Kind switch
     {

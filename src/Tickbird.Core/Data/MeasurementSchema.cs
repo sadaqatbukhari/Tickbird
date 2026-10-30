@@ -3,9 +3,9 @@ using System.Globalization;
 namespace Tickbird.Core.Data;
 
 /// <summary>Field and tag names of one measurement (used for query IntelliSense).</summary>
-public sealed class InfluxDbMeasurementSchema
+public sealed class MeasurementSchema
 {
-    public InfluxDbMeasurementSchema(string name, IReadOnlyList<InfluxDbFieldKey> fields, IReadOnlyList<string> tags)
+    public MeasurementSchema(string name, IReadOnlyList<FieldKey> fields, IReadOnlyList<string> tags)
     {
         Name = name;
         Fields = fields;
@@ -13,15 +13,15 @@ public sealed class InfluxDbMeasurementSchema
     }
 
     public string Name { get; }
-    public IReadOnlyList<InfluxDbFieldKey> Fields { get; }
+    public IReadOnlyList<FieldKey> Fields { get; }
     public IReadOnlyList<string> Tags { get; }
 
     /// <summary>
     /// Builds the schema from InfluxDB 1.x <c>SHOW FIELD KEYS</c> / <c>SHOW TAG KEYS</c> results
     /// (one series per measurement) plus the measurement list, so measurements without fields still appear.
     /// </summary>
-    public static IReadOnlyList<InfluxDbMeasurementSchema> FromInfluxQl(
-        IEnumerable<InfluxDbSeries> fieldSeries, IEnumerable<InfluxDbSeries> tagSeries, IEnumerable<string>? measurements = null)
+    public static IReadOnlyList<MeasurementSchema> FromInfluxQl(
+        IEnumerable<ResultSeries> fieldSeries, IEnumerable<ResultSeries> tagSeries, IEnumerable<string>? measurements = null)
     {
         var builder = new Builder();
         foreach (var name in measurements ?? Enumerable.Empty<string>()) builder.Measurement(name);
@@ -48,7 +48,7 @@ public sealed class InfluxDbMeasurementSchema
     /// Builds the schema from an InfluxDB 3.x <c>information_schema.columns</c> query with the columns
     /// table_name, column_name and data_type. Dictionary-typed columns are tags; <c>time</c> is skipped.
     /// </summary>
-    public static IReadOnlyList<InfluxDbMeasurementSchema> FromInformationSchema(IEnumerable<InfluxDbSeries> series)
+    public static IReadOnlyList<MeasurementSchema> FromInformationSchema(IEnumerable<ResultSeries> series)
     {
         var builder = new Builder();
         foreach (var item in series)
@@ -76,7 +76,7 @@ public sealed class InfluxDbMeasurementSchema
 
     private sealed class Builder
     {
-        private readonly Dictionary<string, (List<InfluxDbFieldKey> Fields, List<string> Tags)> items = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (List<FieldKey> Fields, List<string> Tags)> items = new(StringComparer.Ordinal);
 
         public void Measurement(string? name)
         {
@@ -88,7 +88,7 @@ public sealed class InfluxDbMeasurementSchema
             if (string.IsNullOrWhiteSpace(measurement) || string.IsNullOrWhiteSpace(name)) return;
             Measurement(measurement);
             var fields = items[measurement].Fields;
-            if (!fields.Any(f => f.Name == name)) fields.Add(new InfluxDbFieldKey(name, string.IsNullOrWhiteSpace(type) ? "unknown" : type));
+            if (!fields.Any(f => f.Name == name)) fields.Add(new FieldKey(name, string.IsNullOrWhiteSpace(type) ? "unknown" : type));
         }
 
         public void Tag(string? measurement, string? name)
@@ -99,9 +99,9 @@ public sealed class InfluxDbMeasurementSchema
             if (!tags.Contains(name)) tags.Add(name);
         }
 
-        public IReadOnlyList<InfluxDbMeasurementSchema> Build() => items
+        public IReadOnlyList<MeasurementSchema> Build() => items
             .OrderBy(i => i.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(i => new InfluxDbMeasurementSchema(i.Key, i.Value.Fields, i.Value.Tags))
+            .Select(i => new MeasurementSchema(i.Key, i.Value.Fields, i.Value.Tags))
             .ToList();
     }
 }

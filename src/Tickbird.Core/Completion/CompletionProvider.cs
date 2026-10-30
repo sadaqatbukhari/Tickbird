@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Tickbird.Core.Data;
+using Tickbird.Core.Providers;
 
 namespace Tickbird.Core.Completion;
 
@@ -63,7 +64,7 @@ public sealed class CompletionProvider
     public int TagCount => schemaByMeasurement.Values.Sum(items => items.Count(i => i.Kind == CompletionKind.Tag));
 
     /// <summary>Adds a whole database schema (all measurements with their fields and tags).</summary>
-    public void SetSchema(IEnumerable<InfluxDbMeasurementSchema>? schema)
+    public void SetSchema(IEnumerable<MeasurementSchema>? schema)
     {
         if (schema == null) return;
         foreach (var measurement in schema)
@@ -106,17 +107,24 @@ public sealed class CompletionProvider
 
     /// <summary>Values of the tag from the given measurements, quoted as string literals, sorted and capped.</summary>
     public IReadOnlyList<CompletionItem> GetTagValueItems(InfluxDbServerVersion? version, IEnumerable<string> measurements, string tag) =>
+        GetTagValueItems(version == null ? null : DatabaseProfiles.For(version), measurements, tag);
+
+    /// <summary>Values of the tag from the given measurements, quoted for the database's query language, sorted and capped.</summary>
+    public IReadOnlyList<CompletionItem> GetTagValueItems(DatabaseProfile? profile, IEnumerable<string> measurements, string tag) =>
         measurements.SelectMany(m => tagValues.TryGetValue((m, tag), out var values) ? values : Array.Empty<string>())
             .Distinct(StringComparer.Ordinal)
             .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
             .Take(MaxTagValues)
-            .Select(v => QuoteValue(v, version))
+            .Select(v => QuoteValue(v, profile))
             .Select(q => new CompletionItem(q, $"Value of tag {tag}") { Kind = CompletionKind.TagValue })
             .ToList();
 
     /// <summary>A string literal: InfluxQL escapes quotes with a backslash, SQL doubles them.</summary>
     public static string QuoteValue(string value, InfluxDbServerVersion? version) =>
-        version == InfluxDbServerVersion.InfluxDb3
+        QuoteValue(value, version == null ? null : DatabaseProfiles.For(version));
+
+    public static string QuoteValue(string value, DatabaseProfile? profile) =>
+        profile?.IsSql == true
             ? "'" + value.Replace("'", "''") + "'"
             : "'" + value.Replace("\\", "\\\\").Replace("'", "\\'") + "'";
 
@@ -153,17 +161,29 @@ public sealed class CompletionProvider
     public IEnumerable<CompletionItem> GetItems(InfluxDbServerVersion? version, string? queryText) =>
         GetItems(version, queryText, null);
 
+    public IEnumerable<CompletionItem> GetItems(InfluxDbServerVersion? version, string? queryText, string? textBeforeCaret) =>
+        GetItems(version == null ? null : DatabaseProfiles.For(version), queryText, textBeforeCaret);
+
+    /// <summary>The keywords and functions of a database: its query language plus the functions of the database itself.</summary>
+    private static IReadOnlyList<CompletionItem> StandardItems(DatabaseProfile? profile)
+    {
+        var baseItems = profile?.IsSql == true ? SqlItems : InfluxQlItems.Value;
+        if (profile == null || profile.CompletionExtras.Count == 0) return baseItems;
+        return baseItems.Concat(profile.CompletionExtras.Select(e => new CompletionItem(e.Text, e.Detail)
+            { Kind = e.IsFunction ? CompletionKind.Function : CompletionKind.Keyword })).ToList();
+    }
+
     /// <summary>
     /// Items for the completion list, best first for the caret position: after FROM/INTO measurements come
     /// first; after SELECT/WHERE/AND/OR/BY the fields and tags of the FROM measurement come first.
     /// </summary>
-    public IEnumerable<CompletionItem> GetItems(InfluxDbServerVersion? version, string? queryText, string? textBeforeCaret)
+    public IEnumerable<CompletionItem> GetItems(DatabaseProfile? profile, string? queryText, string? textBeforeCaret)
     {
-        var standard = version == InfluxDbServerVersion.InfluxDb3 ? SqlItems : InfluxQlItems.Value;
+        var standard = StandardItems(profile);
         var keywords = standard.Where(i => i.Kind == CompletionKind.Keyword);
         var functions = standard.Where(i => i.Kind == CompletionKind.Function);
         var measurementItems = measurements.OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-            .Select(n => new CompletionItem(n, "Measurement") { Kind = CompletionKind.Measurement, InsertText = Quote(n, version) });
+            .Select(n => new CompletionItem(n, "Measurement") { Kind = CompletionKind.Measurement, InsertText = Quote(n, profile) });
 
         var current = FindMeasurement(queryText);
         var currentColumns = current != null && schemaByMeasurement.TryGetValue(current, out var s) ? s : Array.Empty<CompletionItem>();
@@ -171,7 +191,7 @@ public sealed class CompletionProvider
             .Where(pair => current == null || !string.Equals(pair.Key, current, StringComparison.OrdinalIgnoreCase))
             .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
             .SelectMany(pair => pair.Value);
-        var columns = currentColumns.Concat(otherColumns).Select(i => i with { InsertText = Quote(i.Text, version) });
+        var columns = currentColumns.Concat(otherColumns).Select(i => i with { InsertText = Quote(i.Text, profile) });
 
         var ordered = DetectContext(textBeforeCaret) switch
         {
@@ -182,7 +202,7 @@ public sealed class CompletionProvider
         return ordered.GroupBy(i => i.Text, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
     }
 
-    public async Task LoadMeasurementsAsync(InfluxDbClient? client, string? database)
+    public async Task LoadMeasurementsAsync(DatabaseClient? client, string? database)
     {
         if (client == null || string.IsNullOrWhiteSpace(database)) return;
         foreach (var name in await client.GetMeasurementNamesAsync(database) ?? Enumerable.Empty<string>())
@@ -190,7 +210,7 @@ public sealed class CompletionProvider
     }
 
     /// <summary>Loads fields/tags of the query's FROM measurement if they are not known yet (tried once per measurement).</summary>
-    public async Task LoadContextSchemaAsync(InfluxDbClient? client, string? database, string? queryText)
+    public async Task LoadContextSchemaAsync(DatabaseClient? client, string? database, string? queryText)
     {
         var measurement = FindMeasurement(queryText);
         if (client == null || string.IsNullOrWhiteSpace(database) || measurement == null
@@ -199,7 +219,7 @@ public sealed class CompletionProvider
         var tagsTask = client.GetTagKeysAsync(database, measurement);
         await Task.WhenAll(fieldsTask, tagsTask);
         schemaByMeasurement[measurement] = SchemaItems(measurement,
-            (await fieldsTask ?? Enumerable.Empty<InfluxDbFieldKey>()).ToList(), (await tagsTask ?? Enumerable.Empty<string>()).ToList());
+            (await fieldsTask ?? Enumerable.Empty<FieldKey>()).ToList(), (await tagsTask ?? Enumerable.Empty<string>()).ToList());
     }
 
     public static string? FindMeasurement(string? queryText)
@@ -230,20 +250,23 @@ public sealed class CompletionProvider
     }
 
     /// <summary>Quotes an identifier when it is not a plain word (or, for SQL, not lower case).</summary>
-    public static string Quote(string name, InfluxDbServerVersion? version)
+    public static string Quote(string name, InfluxDbServerVersion? version) =>
+        Quote(name, version == null ? null : DatabaseProfiles.For(version));
+
+    public static string Quote(string name, DatabaseProfile? profile)
     {
-        var sql = version == InfluxDbServerVersion.InfluxDb3;
-        var plain = PlainIdentifier.IsMatch(name) && !IsReserved(name, version)
+        var sql = profile?.IsSql == true;
+        var plain = PlainIdentifier.IsMatch(name) && !IsReserved(name, profile)
                     && (!sql || string.Equals(name, name.ToLowerInvariant(), StringComparison.Ordinal));
         if (plain) return name;
         return "\"" + (sql ? name.Replace("\"", "\"\"") : name.Replace("\"", "\\\"")) + "\"";
     }
 
-    private static bool IsReserved(string name, InfluxDbServerVersion? version) =>
-        (version == InfluxDbServerVersion.InfluxDb3 ? SqlItems : InfluxQlItems.Value)
+    private static bool IsReserved(string name, DatabaseProfile? profile) =>
+        StandardItems(profile)
             .Any(i => i.Kind == CompletionKind.Keyword && string.Equals(i.Text, name, StringComparison.OrdinalIgnoreCase));
 
-    private static CompletionItem[] SchemaItems(string measurement, IEnumerable<InfluxDbFieldKey> fields, IEnumerable<string> tags) =>
+    private static CompletionItem[] SchemaItems(string measurement, IEnumerable<FieldKey> fields, IEnumerable<string> tags) =>
         fields.Where(f => !string.IsNullOrWhiteSpace(f.Name))
             .Select(f => new CompletionItem(f.Name, $"Field ({f.Type}) in {measurement}") { Kind = CompletionKind.Field })
             .Concat(tags.Where(t => !string.IsNullOrWhiteSpace(t))

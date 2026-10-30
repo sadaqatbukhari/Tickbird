@@ -34,7 +34,7 @@ public sealed class RowFilter
     };
 
     /// <summary>Indexes of the rows that pass. <paramref name="formatter"/> gives the displayed text for the quick search.</summary>
-    public IReadOnlyList<int> MatchingRows(InfluxDbSeries series, ResultFormatter? formatter = null)
+    public IReadOnlyList<int> MatchingRows(ResultSeries series, ResultFormatter? formatter = null)
     {
         var words = Words();
         var conditions = Conditions.Where(c => c.IsComplete).ToList();
@@ -53,17 +53,17 @@ public sealed class RowFilter
     }
 
     /// <summary>The result with only the rows that pass (the same series when nothing is filtered).</summary>
-    public InfluxDbSeries Apply(InfluxDbSeries series, ResultFormatter? formatter = null)
+    public ResultSeries Apply(ResultSeries series, ResultFormatter? formatter = null)
     {
         if (!IsActive) return series;
         var rows = MatchingRows(series, formatter);
         if (rows.Count == series.Values.Count) return series;
-        return new InfluxDbSeries(series.Name, series.Columns, series.Tags, rows.Select(r => series.Values[r]).ToList());
+        return new ResultSeries(series.Name, series.Columns, series.Tags, rows.Select(r => series.Values[r]).ToList());
     }
 
     private string[] Words() => (Text ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-    private static bool RowContains(InfluxDbSeries series, IList<object> row, string word, ResultFormatter? formatter)
+    private static bool RowContains(ResultSeries series, IList<object> row, string word, ResultFormatter? formatter)
     {
         for (var c = 0; c < row.Count; c++)
         {
@@ -79,7 +79,7 @@ public sealed class RowFilter
         return series.Tags.Any(t => t.Value?.Contains(word, StringComparison.OrdinalIgnoreCase) == true);
     }
 
-    private static int IndexOf(InfluxDbSeries series, string column)
+    private static int IndexOf(ResultSeries series, string column)
     {
         for (var i = 0; i < series.Columns.Count; i++)
             if (string.Equals(series.Columns[i], column, StringComparison.OrdinalIgnoreCase)) return i;

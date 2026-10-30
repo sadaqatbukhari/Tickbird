@@ -32,7 +32,7 @@ public sealed class EpochColumnTests : IDisposable
         return (view, host);
     }
 
-    private static InfluxDbSeries Series() =>
+    private static ResultSeries Series() =>
         new("events", new List<string> { "time", "ts_ms", "name" }, new Dictionary<string, string>(),
             new List<IList<object>>
             {

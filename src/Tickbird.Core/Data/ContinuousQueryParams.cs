@@ -5,7 +5,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// Contains the parameters necessary to create a new InfluxDB Continuous Query.
     /// </summary>
-    public class InfluxDbCqParams
+    public class ContinuousQueryParams
     {
         #region Properties
 

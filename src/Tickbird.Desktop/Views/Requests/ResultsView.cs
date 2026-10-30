@@ -21,10 +21,10 @@ public sealed class ResultsView : UserControl
     /// <summary>Row proxy: cells are formatted on demand from the underlying result.</summary>
     private sealed class ResultRow
     {
-        private readonly InfluxDbSeries series;
+        private readonly ResultSeries series;
         private readonly ResultFormatter formatter;
         private readonly int number;
-        public ResultRow(int index, int number, InfluxDbSeries series, ResultFormatter formatter) { Index = index; this.number = number; this.series = series; this.formatter = formatter; }
+        public ResultRow(int index, int number, ResultSeries series, ResultFormatter formatter) { Index = index; this.number = number; this.series = series; this.formatter = formatter; }
         /// <summary>Row in the shown (filtered) result.</summary>
         public int Index { get; }
 
@@ -55,9 +55,9 @@ public sealed class ResultsView : UserControl
     private readonly Panel body = new Grid();
     private ChartView? chart;
     private MapView? map;
-    private InfluxDbSeries? last;
-    private InfluxDbSeries? shown;
-    private IReadOnlyList<InfluxDbSeries>? shownAll;
+    private ResultSeries? last;
+    private ResultSeries? shown;
+    private IReadOnlyList<ResultSeries>? shownAll;
     private IReadOnlyList<int> shownNumbers = Array.Empty<int>();
     private int appliedFilterVersion = -1;
     private readonly TextBox quickFilter = new() { Watermark = "Filter rows…", Width = 220, FontSize = 12, Padding = new Thickness(8, 3), MinHeight = 26 };
@@ -162,7 +162,7 @@ public sealed class ResultsView : UserControl
         AttachedToVisualTree += (_, _) => ApplySettings();
     }
 
-    public InfluxDbClient? Client { get; set; }
+    public DatabaseClient? Client { get; set; }
     public string? Database { get; set; }
 
     public int RowCount => last?.Values.Count ?? 0;
@@ -171,13 +171,13 @@ public sealed class ResultsView : UserControl
     public int ShownRowCount => shown?.Values.Count ?? 0;
 
     /// <summary>The filtered result shown in the grid, chart and map (exposed for tests).</summary>
-    public InfluxDbSeries? Shown => shown;
+    public ResultSeries? Shown => shown;
 
     /// <summary>Chart preferences; a query tab shares one instance across its result tabs and re-runs.</summary>
     public ChartSettings ChartSettings { get; set; } = new();
 
     /// <summary>All result sets of the query this one belongs to, so a chart can combine them (GROUP BY tag).</summary>
-    public IReadOnlyList<InfluxDbSeries>? AllResults { get; set; }
+    public IReadOnlyList<ResultSeries>? AllResults { get; set; }
 
     /// <summary>True when the chart is showing instead of the grid.</summary>
     public bool IsChartMode => chart is { IsVisible: true };
@@ -201,7 +201,7 @@ public sealed class ResultsView : UserControl
         ApplyMode();
     }
 
-    public int Show(InfluxDbSeries result)
+    public int Show(ResultSeries result)
     {
         last = result;
         appliedFilterVersion = -1;
@@ -349,7 +349,7 @@ public sealed class ResultsView : UserControl
     private const double MaxFitWidth = 480;
 
     /// <summary>Width that fits the header and the first rows' text (drag a header edge to change it).</summary>
-    public static double FitWidth(InfluxDbSeries result, int column, ResultFormatter formatter)
+    public static double FitWidth(ResultSeries result, int column, ResultFormatter formatter)
     {
         // Measured from character counts: fast for big results, and close enough for 13 px Segoe UI.
         const double charWidth = 7.4, headerCharWidth = 7.8, padding = 30;
@@ -432,7 +432,7 @@ public sealed class ResultsView : UserControl
         if (filter.IsActive)
         {
             var rows = filter.MatchingRows(last, formatter);
-            shown = rows.Count == last.Values.Count ? last : new InfluxDbSeries(last.Name, last.Columns, last.Tags, rows.Select(r => last.Values[r]).ToList());
+            shown = rows.Count == last.Values.Count ? last : new ResultSeries(last.Name, last.Columns, last.Tags, rows.Select(r => last.Values[r]).ToList());
             shownNumbers = rows.Select(r => r + 1).ToList();
             shownAll = AllResults?.Select(s => ReferenceEquals(s, last) ? shown : filter.Apply(s, formatter)).ToList();
         }
@@ -519,7 +519,7 @@ public sealed class ResultsView : UserControl
     {
         conditionsPanel.Children.Clear();
         var filter = ChartSettings.Filter;
-        var columns = (AllResults ?? (last != null ? new[] { last } : Array.Empty<InfluxDbSeries>()))
+        var columns = (AllResults ?? (last != null ? new[] { last } : Array.Empty<ResultSeries>()))
             .SelectMany(r => r.Columns).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         conditionsPanel.Children.Add(new TextBlock
         {

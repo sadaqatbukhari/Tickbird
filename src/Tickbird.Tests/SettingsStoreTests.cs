@@ -22,7 +22,7 @@ public sealed class SettingsStoreTests : IDisposable
     {
         var store = new SettingsStore(FilePath);
         var settings = new TickbirdSettings { AllowUntrustedSsl = true };
-        settings.Connections.Add(new InfluxDbConnection("a", "Prod", "h", 8086, "u", "p", true, null, InfluxDbServerVersion.InfluxDb3));
+        settings.Connections.Add(new DatabaseConnection("a", "Prod", "h", 8086, "u", "p", true, null, InfluxDbServerVersion.InfluxDb3));
         store.Save(settings);
 
         var loaded = store.Load();
@@ -37,7 +37,7 @@ public sealed class SettingsStoreTests : IDisposable
     {
         var store = new SettingsStore(FilePath);
         var good = new TickbirdSettings();
-        good.Connections.Add(new InfluxDbConnection("keep", "Keep", "h", 8086, "u", "p"));
+        good.Connections.Add(new DatabaseConnection("keep", "Keep", "h", 8086, "u", "p"));
         store.Save(good);
         store.Save(good); // second save creates the .bak
         File.WriteAllText(FilePath, "{ corrupt");

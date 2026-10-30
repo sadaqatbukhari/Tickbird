@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Tickbird.Core.Data;
+using Tickbird.Core.Providers;
 using Tickbird.Core.Navigation;
 using Tickbird.Desktop.Services;
 
@@ -23,7 +24,7 @@ public sealed class RunningQueriesView : ListRequestView
 
     protected override async Task<TableData> LoadAsync()
     {
-        var queries = (await Client.GetRunningQueriesAsync() ?? Enumerable.Empty<InfluxDbRunningQuery>()).ToList();
+        var queries = (await Client.GetRunningQueriesAsync() ?? Enumerable.Empty<RunningQuery>()).ToList();
         return new TableData(new[] { "PID", "Duration", "Database", "Query" },
             queries.Select(q => (IReadOnlyList<string?>)new[] { q.PID.ToString(), q.Duration, q.Database, q.Query }).ToList());
     }
@@ -46,7 +47,7 @@ public sealed class RetentionPolicyView : RequestView
     private readonly Button create = ToolButton("Create", "CreateRetentionPolicy", "Create a retention policy");
     private readonly Button alter = ToolButton("Alter", "EditRetentionPolicy", "Alter the selected policy");
     private readonly Button drop = ToolButton("Drop", "DropRetentionPolicy", "Drop the selected policy");
-    private List<InfluxDbRetentionPolicy> policies = new();
+    private List<RetentionPolicy> policies = new();
     private bool binding;
 
     public RetentionPolicyView()
@@ -72,7 +73,7 @@ public sealed class RetentionPolicyView : RequestView
     }
 
     private string? SelectedDatabase => databases.SelectedItem as string;
-    private InfluxDbRetentionPolicy? Selected => (grid.SelectedItem as GridRow)?.Tag as InfluxDbRetentionPolicy;
+    private RetentionPolicy? Selected => (grid.SelectedItem as GridRow)?.Tag as RetentionPolicy;
 
     private void UpdateButtons()
     {
@@ -80,8 +81,16 @@ public sealed class RetentionPolicyView : RequestView
         alter.IsEnabled = drop.IsEnabled = Selected != null;
     }
 
+    /// <summary>Columns follow the database: InfluxDB policies have replication and a default; TimescaleDB ones belong to a table.</summary>
+    private void ConfigureColumns()
+    {
+        if (Client.Connection.Profile.RetentionPerTable) GridFactory.SetColumns(grid, new[] { "Table", "Keep data for", "Chunk interval" });
+        else GridFactory.SetColumns(grid, new[] { "Name", "Duration", "Shard Group Duration", "Replication", "Default" });
+    }
+
     public override async Task ExecuteAsync()
     {
+        ConfigureColumns();
         var keep = SelectedDatabase;
         var names = !string.IsNullOrWhiteSpace(Client.Connection.Database)
             ? new[] { Client.Connection.Database }.AsEnumerable()
@@ -98,17 +107,19 @@ public sealed class RetentionPolicyView : RequestView
         var keep = Selected?.Name;
         if (SelectedDatabase == null) { grid.ItemsSource = null; UpdateButtons(); return; }
         policies = (await Client.GetRetentionPoliciesAsync(SelectedDatabase)).ToList();
-        var rows = policies.Select(p => new GridRow(new[]
-            { p.Name, p.Duration, p.ShardGroupDuration, p.ReplicationCopies.ToString(), p.Default ? GridFactory.CheckMark : null }, p)).ToList();
+        var perTable = Client.Connection.Profile.RetentionPerTable;
+        var rows = policies.Select(p => new GridRow(perTable
+            ? new[] { p.Name, p.Duration, p.ShardGroupDuration }
+            : new[] { p.Name, p.Duration, p.ShardGroupDuration, p.ReplicationCopies.ToString(), p.Default ? GridFactory.CheckMark : null }, p)).ToList();
         grid.ItemsSource = rows;
-        grid.SelectedItem = rows.FirstOrDefault(r => ((InfluxDbRetentionPolicy)r.Tag!).Name == keep);
+        grid.SelectedItem = rows.FirstOrDefault(r => ((RetentionPolicy)r.Tag!).Name == keep);
         UpdateButtons();
     }
 
     private async Task CreateAsync()
     {
         if (OwnerWindow == null || SelectedDatabase == null) return;
-        var input = await TickbirdDialogs.RetentionPolicyAsync(OwnerWindow, null);
+        var input = await TickbirdDialogs.RetentionPolicyAsync(OwnerWindow, null, Client.Connection.Profile);
         if (input == null) return;
         var response = await Client.CreateRetentionPolicyAsync(SelectedDatabase, input.Name, input.Duration, input.Replication, input.IsDefault);
         if (!response.Success) await ShowError(response.Body);
@@ -119,7 +130,7 @@ public sealed class RetentionPolicyView : RequestView
     {
         var policy = Selected;
         if (OwnerWindow == null || SelectedDatabase == null || policy == null) return;
-        var input = await TickbirdDialogs.RetentionPolicyAsync(OwnerWindow, policy);
+        var input = await TickbirdDialogs.RetentionPolicyAsync(OwnerWindow, policy, Client.Connection.Profile);
         if (input == null) return;
         var response = await Client.AlterRetentionPolicyAsync(SelectedDatabase, input.Name, input.Duration, input.Replication, input.IsDefault);
         if (!response.Success) { await ShowError(response.Body); }
@@ -156,7 +167,7 @@ public sealed class ContinuousQueryView : RequestView
     private readonly Button drop = ToolButton("Drop", "DropContinuousQuery", "Drop the selected continuous query");
     private readonly Button backfill = ToolButton("Backfill", "BackFill", "Run a backfill");
 
-    public Tickbird.Core.Data.InfluxDbClient? BackfillClient => Client;
+    public Tickbird.Core.Data.DatabaseClient? BackfillClient => Client;
 
     public CQBackfillHandler? RunBackfill { get; set; }
 
@@ -183,7 +194,7 @@ public sealed class ContinuousQueryView : RequestView
         UpdateButtons();
     }
 
-    private InfluxDbContinuousQuery? Selected => (grid.SelectedItem as GridRow)?.Tag as InfluxDbContinuousQuery;
+    private ContinuousQuery? Selected => (grid.SelectedItem as GridRow)?.Tag as ContinuousQuery;
 
     private void UpdateButtons() => drop.IsEnabled = Selected != null;
 
@@ -192,10 +203,10 @@ public sealed class ContinuousQueryView : RequestView
         var keep = Selected?.Name;
         queryText.Text = null;
         if (string.IsNullOrEmpty(Database)) return;
-        var cqs = (await Client.GetContinousQueriesAsync(Database) ?? Enumerable.Empty<InfluxDbContinuousQuery>()).ToList();
+        var cqs = (await Client.GetContinousQueriesAsync(Database) ?? Enumerable.Empty<ContinuousQuery>()).ToList();
         var rows = cqs.Select(c => new GridRow(new[] { c.Name }, c)).ToList();
         grid.ItemsSource = rows;
-        grid.SelectedItem = rows.FirstOrDefault(r => ((InfluxDbContinuousQuery)r.Tag!).Name == keep);
+        grid.SelectedItem = rows.FirstOrDefault(r => ((ContinuousQuery)r.Tag!).Name == keep);
         UpdateButtons();
     }
 
@@ -261,8 +272,8 @@ public sealed class UsersView : RequestView
         UpdateButtons();
     }
 
-    private InfluxDbUser? SelectedUser => (users.SelectedItem as GridRow)?.Tag as InfluxDbUser;
-    private InfluxDbGrant? SelectedGrant => (grants.SelectedItem as GridRow)?.Tag as InfluxDbGrant;
+    private DatabaseUser? SelectedUser => (users.SelectedItem as GridRow)?.Tag as DatabaseUser;
+    private DatabaseGrant? SelectedGrant => (grants.SelectedItem as GridRow)?.Tag as DatabaseGrant;
 
     private void UpdateButtons()
     {
@@ -276,10 +287,10 @@ public sealed class UsersView : RequestView
     public override async Task ExecuteAsync()
     {
         var keep = SelectedUser?.Name;
-        var list = (await Client.GetUsersAsync() ?? Enumerable.Empty<InfluxDbUser>()).ToList();
+        var list = (await Client.GetUsersAsync() ?? Enumerable.Empty<DatabaseUser>()).ToList();
         var rows = list.Select(u => new GridRow(new[] { u.Name, u.IsAdmin ? GridFactory.CheckMark : null }, u)).ToList();
         users.ItemsSource = rows;
-        users.SelectedItem = rows.FirstOrDefault(r => ((InfluxDbUser)r.Tag!).Name == keep);
+        users.SelectedItem = rows.FirstOrDefault(r => ((DatabaseUser)r.Tag!).Name == keep);
         UpdateButtons();
     }
 
@@ -288,20 +299,20 @@ public sealed class UsersView : RequestView
         var keep = SelectedGrant?.Database;
         var user = SelectedUser;
         if (user == null || user.IsAdmin) { grants.ItemsSource = null; UpdateButtons(); return; }
-        var privileges = (await Client.GetPrivilegesAsync(user.Name) ?? Enumerable.Empty<InfluxDbGrant>()).ToList();
+        var privileges = (await Client.GetPrivilegesAsync(user.Name) ?? Enumerable.Empty<DatabaseGrant>()).ToList();
         var rows = privileges.Select(p => new GridRow(new[]
         {
             p.Database,
-            p.Privilege == InfluxDbPrivileges.Read ? GridFactory.CheckMark : null,
-            p.Privilege == InfluxDbPrivileges.Write ? GridFactory.CheckMark : null,
-            p.Privilege == InfluxDbPrivileges.All ? GridFactory.CheckMark : null,
+            p.Privilege == DatabasePrivileges.Read ? GridFactory.CheckMark : null,
+            p.Privilege == DatabasePrivileges.Write ? GridFactory.CheckMark : null,
+            p.Privilege == DatabasePrivileges.All ? GridFactory.CheckMark : null,
         }, p)).ToList();
         grants.ItemsSource = rows;
-        grants.SelectedItem = rows.FirstOrDefault(r => ((InfluxDbGrant)r.Tag!).Database == keep);
+        grants.SelectedItem = rows.FirstOrDefault(r => ((DatabaseGrant)r.Tag!).Database == keep);
         UpdateButtons();
     }
 
-    private async Task Report(InfluxDbApiResponse response)
+    private async Task Report(CommandResult response)
     {
         if (!response.Success) await ShowError(response.Body);
     }
@@ -361,7 +372,7 @@ public sealed class UsersView : RequestView
         if (OwnerWindow == null || user == null || current == null) return;
         var privilege = await TickbirdDialogs.EditPrivilegeAsync(OwnerWindow, user.Name, current);
         if (privilege == null || privilege == current.Privilege) return;
-        if (privilege == InfluxDbPrivileges.None) await Report(await Client.RevokePrivilegeAsync(user.Name, current.Privilege, current.Database));
+        if (privilege == DatabasePrivileges.None) await Report(await Client.RevokePrivilegeAsync(user.Name, current.Privilege, current.Database));
         else await Report(await Client.GrantPrivilegeAsync(user.Name, privilege.Value, current.Database));
         await BindPrivilegesAsync();
     }
@@ -380,7 +391,7 @@ public sealed class StatsView : RequestView
 {
     private readonly ComboBox categories = new() { MinWidth = 220 };
     private readonly TabControl series = new();
-    private InfluxDbStats? stats;
+    private ServerStats? stats;
     private bool binding;
 
     public StatsView()
@@ -399,15 +410,17 @@ public sealed class StatsView : RequestView
         categories.SelectionChanged += (_, _) => { if (!binding) BindSelected(); };
     }
 
-    private IEnumerable<InfluxDbSeries>? Series(string name) =>
-        stats?.GetType().GetProperty(name)?.GetValue(stats) as IEnumerable<InfluxDbSeries>;
+    private IEnumerable<ResultSeries>? Series(string name) =>
+        stats != null && stats.Custom.TryGetValue(name, out var custom) ? custom
+            : stats?.GetType().GetProperty(name)?.GetValue(stats) as IEnumerable<ResultSeries>;
 
     public override async Task ExecuteAsync()
     {
         var keep = categories.SelectedItem as string;
         stats = await Client.GetStatsAsync();
         var names = stats == null ? new List<string>() : stats.GetType().GetProperties()
-            .Where(p => p.GetValue(stats) is IEnumerable<InfluxDbSeries> s && s.Any()).Select(p => p.Name).ToList();
+            .Where(p => p.GetValue(stats) is IEnumerable<ResultSeries> s && s.Any()).Select(p => p.Name).ToList();
+        if (stats != null) names.AddRange(stats.Custom.Where(c => c.Value.Any()).Select(c => c.Key));
         binding = true;
         categories.ItemsSource = names;
         categories.SelectedItem = keep != null && names.Contains(keep) ? keep : names.FirstOrDefault();
@@ -420,7 +433,7 @@ public sealed class StatsView : RequestView
         series.Items.Clear();
         if (categories.SelectedItem is not string name) return;
         var count = 0;
-        foreach (var s in Series(name) ?? Enumerable.Empty<InfluxDbSeries>())
+        foreach (var s in Series(name) ?? Enumerable.Empty<ResultSeries>())
         {
             var view = new ResultsView { Client = Client };
             view.Show(s);
@@ -452,7 +465,9 @@ public sealed class DiagnosticsView : RequestView
         const string blank = "-";
         string V(string? s) => string.IsNullOrEmpty(s) ? blank : s;
         var ut = d?.Uptime ?? TimeSpan.Zero;
-        var rows = d == null ? new List<(string, string)>() : new List<(string, string)>
+        var rows = d == null ? new List<(string, string)>()
+            : d.Properties != null ? d.Properties.Select(p => (p.Key, V(p.Value))).ToList()
+            : new List<(string, string)>
         {
             ("Hostname", V(d.Hostname)), ("PID", d.PID.ToString()), ("Current time", d.CurrentTime.ToString()),
             ("Started", d.Started.ToString()), ("Uptime", $"{ut.Days}d {ut.Hours}h {ut.Minutes}m {ut.Seconds}s {ut.Milliseconds}ms"),

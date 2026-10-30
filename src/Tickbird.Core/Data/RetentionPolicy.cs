@@ -9,7 +9,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// Represents a retention policy for a given database.
     /// </summary>
-    public class InfluxDbRetentionPolicy
+    public class RetentionPolicy
     {
         /// <summary>
         /// RP name.

@@ -5,7 +5,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// InfluxDB server granted database privileges.
     /// </summary>
-    public class InfluxDbGrant
+    public class DatabaseGrant
     {
         #region Fields
 
@@ -17,13 +17,13 @@ namespace Tickbird.Core.Data
         /// <summary>
         /// The granted database privilege.
         /// </summary>
-        public readonly InfluxDbPrivileges Privilege;
+        public readonly DatabasePrivileges Privilege;
 
         #endregion Fields
 
         #region Constructors
 
-        public InfluxDbGrant(string database, InfluxDbPrivileges privilege = InfluxDbPrivileges.None)
+        public DatabaseGrant(string database, DatabasePrivileges privilege = DatabasePrivileges.None)
         {
             if (string.IsNullOrWhiteSpace(database)) throw new ArgumentNullException("database");
             Database = database;

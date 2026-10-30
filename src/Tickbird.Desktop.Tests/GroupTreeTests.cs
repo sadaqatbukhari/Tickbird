@@ -7,7 +7,7 @@ namespace Tickbird.Desktop.Tests;
 public class GroupTreeTests
 {
     private static TreeNodeViewModel Server(string id, string? group) =>
-        new(id, NodeKind.Connection, null, new InfluxDbConnection(id, id, "localhost", 8086, "u", "p") { Group = group });
+        new(id, NodeKind.Connection, null, new DatabaseConnection(id, id, "localhost", 8086, "u", "p") { Group = group });
 
     private static string[] Top(MainWindowViewModel vm) => vm.Nodes.Select(n => n.Name).ToArray();
 

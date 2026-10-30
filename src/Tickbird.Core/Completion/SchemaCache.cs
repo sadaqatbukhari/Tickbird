@@ -9,12 +9,12 @@ namespace Tickbird.Core.Completion;
 public sealed class SchemaCache
 {
     private readonly object gate = new();
-    private readonly Dictionary<(string Connection, string Database), Task<IReadOnlyList<InfluxDbMeasurementSchema>>> entries = new();
+    private readonly Dictionary<(string Connection, string Database), Task<IReadOnlyList<MeasurementSchema>>> entries = new();
     private readonly Dictionary<(string Connection, string Database, string Measurement, string Tag), Task<IReadOnlyList<string>>> tagValues = new();
     private readonly SemaphoreSlim throttle = new(2);
 
-    public Task<IReadOnlyList<InfluxDbMeasurementSchema>> GetAsync(string connectionId, string database,
-        Func<Task<IReadOnlyList<InfluxDbMeasurementSchema>>> load)
+    public Task<IReadOnlyList<MeasurementSchema>> GetAsync(string connectionId, string database,
+        Func<Task<IReadOnlyList<MeasurementSchema>>> load)
     {
         var key = (connectionId, database);
         lock (gate)
@@ -44,7 +44,7 @@ public sealed class SchemaCache
     }
 
     /// <summary>The schema if it has finished loading successfully; otherwise null.</summary>
-    public IReadOnlyList<InfluxDbMeasurementSchema>? TryGetLoaded(string connectionId, string database)
+    public IReadOnlyList<MeasurementSchema>? TryGetLoaded(string connectionId, string database)
     {
         lock (gate)
             return entries.TryGetValue((connectionId, database), out var task) && task.IsCompletedSuccessfully ? task.Result : null;

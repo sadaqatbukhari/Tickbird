@@ -16,82 +16,82 @@ using Tickbird.Desktop.Views.Requests;
 namespace Tickbird.Desktop.Tests;
 
 /// <summary>An in-memory server with sample data, so the real views can be rendered for the documentation.</summary>
-internal sealed class SampleClient : InfluxDbClient
+internal sealed class SampleClient : DatabaseClient
 {
-    public SampleClient() : base(new InfluxDbConnection("1", "Sample", "localhost", 8086, null, null)) { }
+    public SampleClient() : base(new DatabaseConnection("1", "Sample", "localhost", 8086, null, null)) { }
 
     private static Task<T> Done<T>(T value) => Task.FromResult(value);
-    private static Task<InfluxDbApiResponse> Ok() => Done(new InfluxDbApiResponse("{}", HttpStatusCode.OK, true));
+    private static Task<CommandResult> Ok() => Done(new CommandResult("{}", HttpStatusCode.OK, true));
 
     public override Task<IEnumerable<string>> GetDatabaseNamesAsync() => Done<IEnumerable<string>>(new[] { "telemetry", "ems" });
-    public override Task<InfluxDbApiResponse> CreateDatabaseAsync(string database) => Ok();
-    public override Task<InfluxDbApiResponse> DropDatabaseAsync(string database) => Ok();
-    public override Task<IEnumerable<InfluxDbRetentionPolicy>> GetRetentionPoliciesAsync(string database) =>
-        Done<IEnumerable<InfluxDbRetentionPolicy>>(new[] { new InfluxDbRetentionPolicy { Name = "autogen", Database = database, Duration = "0s", ShardGroupDuration = "168h0m0s", ReplicationCopies = 1, Default = true } });
-    public override Task<InfluxDbApiResponse> CreateRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false) => Ok();
-    public override Task<InfluxDbApiResponse> AlterRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false) => Ok();
-    public override Task<InfluxDbApiResponse> DropRetentionPolicyAsync(string database, string policyName) => Ok();
+    public override Task<CommandResult> CreateDatabaseAsync(string database) => Ok();
+    public override Task<CommandResult> DropDatabaseAsync(string database) => Ok();
+    public override Task<IEnumerable<RetentionPolicy>> GetRetentionPoliciesAsync(string database) =>
+        Done<IEnumerable<RetentionPolicy>>(new[] { new RetentionPolicy { Name = "autogen", Database = database, Duration = "0s", ShardGroupDuration = "168h0m0s", ReplicationCopies = 1, Default = true } });
+    public override Task<CommandResult> CreateRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false) => Ok();
+    public override Task<CommandResult> AlterRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false) => Ok();
+    public override Task<CommandResult> DropRetentionPolicyAsync(string database, string policyName) => Ok();
     public override Task<IEnumerable<string>> GetMeasurementNamesAsync(string database) => Done<IEnumerable<string>>(new[] { "cpu", "gps", "mem" });
-    public override Task<InfluxDbApiResponse> DropMeasurementAsync(string database, string measurement) => Ok();
+    public override Task<CommandResult> DropMeasurementAsync(string database, string measurement) => Ok();
     public override Task<IEnumerable<string>> GetTagKeysAsync(string database, string measurement) => Done<IEnumerable<string>>(new[] { "host", "region" });
-    public override Task<IEnumerable<InfluxDbTagValue>> GetTagValuesAsync(string database, string measurement, string tag) =>
-        Done<IEnumerable<InfluxDbTagValue>>(new[] { "db-1", "web-1", "web-2", "web-3" }.Select(v => new InfluxDbTagValue(tag, v)).ToList());
-    public override Task<IEnumerable<InfluxDbFieldKey>> GetFieldKeysAsync(string database, string measurement) =>
-        Done<IEnumerable<InfluxDbFieldKey>>(new[] { new InfluxDbFieldKey("usage_idle", "float"), new InfluxDbFieldKey("usage_system", "float"), new InfluxDbFieldKey("usage_user", "float"), new InfluxDbFieldKey("cores", "integer") });
+    public override Task<IEnumerable<TagValue>> GetTagValuesAsync(string database, string measurement, string tag) =>
+        Done<IEnumerable<TagValue>>(new[] { "db-1", "web-1", "web-2", "web-3" }.Select(v => new TagValue(tag, v)).ToList());
+    public override Task<IEnumerable<FieldKey>> GetFieldKeysAsync(string database, string measurement) =>
+        Done<IEnumerable<FieldKey>>(new[] { new FieldKey("usage_idle", "float"), new FieldKey("usage_system", "float"), new FieldKey("usage_user", "float"), new FieldKey("cores", "integer") });
     public override Task<IEnumerable<string>> GetSeriesNamesAsync(string database, string measurement = null) =>
         Done<IEnumerable<string>>(new[] { "cpu,host=db-1,region=eu", "cpu,host=web-1,region=eu", "cpu,host=web-2,region=us", "cpu,host=web-3,region=us" }.Select(s => s.Replace("cpu", measurement ?? "cpu")).ToList());
-    public override Task<InfluxDbApiResponse> DropSeriesAsync(string database, string measurement = null) => Ok();
-    public override Task<IEnumerable<InfluxDbRunningQuery>> GetRunningQueriesAsync() => Done<IEnumerable<InfluxDbRunningQuery>>(Array.Empty<InfluxDbRunningQuery>());
-    public override Task<InfluxDbApiResponse> KillQueryAsync(int pid) => Ok();
+    public override Task<CommandResult> DropSeriesAsync(string database, string measurement = null) => Ok();
+    public override Task<IEnumerable<RunningQuery>> GetRunningQueriesAsync() => Done<IEnumerable<RunningQuery>>(Array.Empty<RunningQuery>());
+    public override Task<CommandResult> KillQueryAsync(int pid) => Ok();
 
     private static DateTime T(int minute) => new(2026, 10, 21, 7, minute, 0, DateTimeKind.Utc);
 
-    private static InfluxDbSeries Cpu(string host, double offset, IDictionary<string, string>? tags = null) =>
+    private static ResultSeries Cpu(string host, double offset, IDictionary<string, string>? tags = null) =>
         new("cpu", new List<string> { "time", "mean_usage" }, tags != null ? new Dictionary<string, string>(tags) : new Dictionary<string, string>(),
             Enumerable.Range(0, 20).Select(i => (IList<object>)new List<object> { T(i * 3), Math.Round(offset + Math.Sin(i / 3.0) * 8, 2) }).ToList());
 
-    public override Task<IEnumerable<InfluxDbSeries>> QueryAsync(string database, string query)
+    public override Task<IEnumerable<ResultSeries>> QueryAsync(string database, string query)
     {
         var grouped = query.Contains("GROUP BY", StringComparison.OrdinalIgnoreCase) && query.Contains("host", StringComparison.OrdinalIgnoreCase)
                       && query.IndexOf("host", query.IndexOf("GROUP BY", StringComparison.OrdinalIgnoreCase), StringComparison.OrdinalIgnoreCase) > 0;
-        IEnumerable<InfluxDbSeries> result = grouped
+        IEnumerable<ResultSeries> result = grouped
             ? new[] { "web-1", "web-2", "web-3" }.Select((h, i) => Cpu(h, 30 + i * 12, new Dictionary<string, string> { ["host"] = h })).ToList()
             : new[] { Cpu("web-1", 38) };
         return Done(result);
     }
 
-    public override Task<IEnumerable<InfluxDbContinuousQuery>> GetContinousQueriesAsync(string database) =>
-        Done<IEnumerable<InfluxDbContinuousQuery>>(new[]
+    public override Task<IEnumerable<ContinuousQuery>> GetContinousQueriesAsync(string database) =>
+        Done<IEnumerable<ContinuousQuery>>(new[]
         {
-            new InfluxDbContinuousQuery("cq_cpu_1h",
+            new ContinuousQuery("cq_cpu_1h",
                 "CREATE CONTINUOUS QUERY \"cq_cpu_1h\" ON \"" + database + "\"\nBEGIN\n  SELECT mean(\"usage_user\") AS \"usage_user\"\n  INTO \"" + database + "\".\"autogen\".\"cpu_1h\"\n  FROM \"" + database + "\".\"autogen\".\"cpu\"\n  GROUP BY time(1h), \"host\"\nEND"),
-            new InfluxDbContinuousQuery("cq_mem_10m", "CREATE CONTINUOUS QUERY \"cq_mem_10m\" ON \"" + database + "\" BEGIN SELECT max(\"used\") INTO \"mem_10m\" FROM \"mem\" GROUP BY time(10m) END")
+            new ContinuousQuery("cq_mem_10m", "CREATE CONTINUOUS QUERY \"cq_mem_10m\" ON \"" + database + "\" BEGIN SELECT max(\"used\") INTO \"mem_10m\" FROM \"mem\" GROUP BY time(10m) END")
         });
-    public override Task<InfluxDbApiResponse> CreateContinuousQueryAsync(InfluxDbCqParams cqParams) => Ok();
-    public override Task<InfluxDbApiResponse> DropContinuousQueryAsync(string database, string cqName) => Ok();
-    public override Task<InfluxDbApiResponse> BackfillAsync(string database, InfluxDbBackfillParams backfillParams) => Ok();
-    public override Task<InfluxDbApiResponse> WriteAsync(string database, string measurement, IDictionary<string, object> tags, IDictionary<string, object> fields, DateTime timeStamp, string retentionPolicy = null) => Ok();
-    public override Task<InfluxDbApiResponse> WriteAsync(string database, InfluxDbPoint point, string retentionPolicy = null) => Ok();
-    public override Task<InfluxDbApiResponse> WriteAsync(string database, IEnumerable<InfluxDbPoint> points, string retentionPolicy = null) => Ok();
-    public override Task<InfluxDbPingResponse> PingAsync() => Done(new InfluxDbPingResponse(true, TimeSpan.FromMilliseconds(12), "1.8.10"));
-    public override Task<InfluxDbDiagnostics> GetDiagnosticsAsync() => Done(new InfluxDbDiagnostics
+    public override Task<CommandResult> CreateContinuousQueryAsync(ContinuousQueryParams cqParams) => Ok();
+    public override Task<CommandResult> DropContinuousQueryAsync(string database, string cqName) => Ok();
+    public override Task<CommandResult> BackfillAsync(string database, BackfillParams backfillParams) => Ok();
+    public override Task<CommandResult> WriteAsync(string database, string measurement, IDictionary<string, object> tags, IDictionary<string, object> fields, DateTime timeStamp, string retentionPolicy = null) => Ok();
+    public override Task<CommandResult> WriteAsync(string database, DataPoint point, string retentionPolicy = null) => Ok();
+    public override Task<CommandResult> WriteAsync(string database, IEnumerable<DataPoint> points, string retentionPolicy = null) => Ok();
+    public override Task<PingResponse> PingAsync() => Done(new PingResponse(true, TimeSpan.FromMilliseconds(12), "1.8.10"));
+    public override Task<ServerDiagnostics> GetDiagnosticsAsync() => Done(new ServerDiagnostics
     {
         Hostname = "influx-prod-01", Branch = "1.8", Commit = "688e697c51fd", BuildVersion = "1.8.10",
         Started = new DateTime(2026, 10, 14, 5, 12, 0, DateTimeKind.Utc), CurrentTime = new DateTime(2026, 10, 21, 7, 30, 0, DateTimeKind.Utc),
         Uptime = new TimeSpan(7, 2, 18, 0), PID = 2214, GoArch = "amd64", GoMaxProc = 8, GoOs = "linux", GoVersion = "go1.13.8"
     });
-    public override Task<InfluxDbStats> GetStatsAsync() => Done(new InfluxDbStats());
-    public override Task<IEnumerable<InfluxDbUser>> GetUsersAsync() =>
-        Done<IEnumerable<InfluxDbUser>>(new[] { new InfluxDbUser("admin", true), new InfluxDbUser("grafana", false), new InfluxDbUser("telegraf", false), new InfluxDbUser("viewer", false) });
-    public override Task<InfluxDbApiResponse> CreateUserAsync(string username, string password, bool isAdmin) => Ok();
-    public override Task<InfluxDbApiResponse> DropUserAsync(string username) => Ok();
-    public override Task<InfluxDbApiResponse> SetPasswordAsync(string username, string password) => Ok();
-    public override Task<IEnumerable<InfluxDbGrant>> GetPrivilegesAsync(string username) =>
-        Done<IEnumerable<InfluxDbGrant>>(new[] { new InfluxDbGrant("telemetry", InfluxDbPrivileges.All), new InfluxDbGrant("ems", InfluxDbPrivileges.Read) });
-    public override Task<InfluxDbApiResponse> GrantAdministratorAsync(string username) => Ok();
-    public override Task<InfluxDbApiResponse> RevokeAdministratorAsync(string username) => Ok();
-    public override Task<InfluxDbApiResponse> GrantPrivilegeAsync(string username, InfluxDbPrivileges privilege, string database) => Ok();
-    public override Task<InfluxDbApiResponse> RevokePrivilegeAsync(string username, InfluxDbPrivileges privilege, string database) => Ok();
+    public override Task<ServerStats> GetStatsAsync() => Done(new ServerStats());
+    public override Task<IEnumerable<DatabaseUser>> GetUsersAsync() =>
+        Done<IEnumerable<DatabaseUser>>(new[] { new DatabaseUser("admin", true), new DatabaseUser("grafana", false), new DatabaseUser("telegraf", false), new DatabaseUser("viewer", false) });
+    public override Task<CommandResult> CreateUserAsync(string username, string password, bool isAdmin) => Ok();
+    public override Task<CommandResult> DropUserAsync(string username) => Ok();
+    public override Task<CommandResult> SetPasswordAsync(string username, string password) => Ok();
+    public override Task<IEnumerable<DatabaseGrant>> GetPrivilegesAsync(string username) =>
+        Done<IEnumerable<DatabaseGrant>>(new[] { new DatabaseGrant("telemetry", DatabasePrivileges.All), new DatabaseGrant("ems", DatabasePrivileges.Read) });
+    public override Task<CommandResult> GrantAdministratorAsync(string username) => Ok();
+    public override Task<CommandResult> RevokeAdministratorAsync(string username) => Ok();
+    public override Task<CommandResult> GrantPrivilegeAsync(string username, DatabasePrivileges privilege, string database) => Ok();
+    public override Task<CommandResult> RevokePrivilegeAsync(string username, DatabasePrivileges privilege, string database) => Ok();
 }
 
 /// <summary>
@@ -121,7 +121,7 @@ public class DocsRequestScreenshotTests
         TickbirdApp.Current = app;
         var window = new MainWindow(app, showConnectionsOnStart: false) { Width = 1180, Height = 760 };
         var vm = (MainWindowViewModel)window.DataContext!;
-        var connection = new InfluxDbConnection("1", "Local InfluxDB", "localhost", 8086, "u", "p");
+        var connection = new DatabaseConnection("1", "Local InfluxDB", "localhost", 8086, "u", "p");
         var server = new TreeNodeViewModel(connection.Name, NodeKind.Connection, null, connection);
         TreeNodeViewModel? db = null, measurement = null;
         foreach (var name in new[] { "telemetry", "ems" })
@@ -269,14 +269,14 @@ public class DocsRequestScreenshotTests
         if (string.IsNullOrEmpty(Target)) return;
         var (window, vm, _, _, _) = Create();
         var client = new SampleClient();
-        var user = new InfluxDbUser("telegraf", false);
+        var user = new DatabaseUser("telegraf", false);
 
         await Dialog(window, TickbirdDialogs.CreateDatabaseAsync(window, "Local InfluxDB", null, new[] { "telemetry", "ems" }), "Connections_CreateDatabase_1");
         await Dialog(window, TickbirdDialogs.CreateUserAsync(window), "Connections_CreateUser_1");
         await Dialog(window, TickbirdDialogs.EditUserAsync(window, user), "Connections_EditUser");
         await Dialog(window, TickbirdDialogs.PasswordAsync(window, user), "Connections_ChangeUserPassword");
         await Dialog(window, TickbirdDialogs.GrantPrivilegeAsync(window, user, new[] { "telemetry", "ems" }), "Connections_GrantUserPrivilege_1");
-        await Dialog(window, TickbirdDialogs.EditPrivilegeAsync(window, "telegraf", new InfluxDbGrant("telemetry", InfluxDbPrivileges.All)), "Connections_EditUserPrivilege");
+        await Dialog(window, TickbirdDialogs.EditPrivilegeAsync(window, "telegraf", new DatabaseGrant("telemetry", DatabasePrivileges.All)), "Connections_EditUserPrivilege");
         await Dialog(window, TickbirdDialogs.CreateContinuousQueryAsync(window, client, "telemetry"), "Databases_CQ_3");
         await Dialog(window, TickbirdDialogs.BackfillAsync(window, client, "telemetry"), "Databases_Backfill_1");
         await Dialog(window, Dialogs.ConfirmAsync(window, "Confirm Drop User", "Are you sure you want to drop the user \"telegraf\"? This is a permanent operation."), "Connections_DropUser");

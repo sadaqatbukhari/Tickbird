@@ -1,4 +1,5 @@
 using Tickbird.Core.Data;
+using Tickbird.Core.Providers;
 using Tickbird.Core.Navigation;
 using Tickbird.Core.Settings;
 using Newtonsoft.Json;
@@ -14,7 +15,7 @@ public sealed class ConnectionGroupTests : IDisposable
         if (Directory.Exists(dir)) Directory.Delete(dir, true);
     }
 
-    private static InfluxDbConnection Conn(string id, string? group) =>
+    private static DatabaseConnection Conn(string id, string? group) =>
         new(id, id, "h", 8086, "u", "p") { Group = group };
 
     [Fact]
@@ -127,7 +128,7 @@ public sealed class ConnectionGroupTests : IDisposable
     [Fact]
     public void GroupFolder_EnablesNoServerCommands()
     {
-        var c = CommandAvailability.For(NodeKind.Group, "PROD", null, false, false);
+        var c = CommandAvailability.For(NodeKind.Group, "PROD", (DatabaseProfile?)null, false, false);
         Assert.False(c.Disconnect || c.Refresh || c.NewQuery || c.CreateDatabase || c.ShowUsers || c.DropDatabase);
     }
 }

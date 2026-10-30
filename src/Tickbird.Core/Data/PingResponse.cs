@@ -5,7 +5,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// Represents the reply from a ping message sent to an InfluxDB server.
     /// </summary>
-    public class InfluxDbPingResponse
+    public class PingResponse
     {
         #region Fields
 
@@ -32,7 +32,7 @@ namespace Tickbird.Core.Data
 
         #region Constructors
 
-        public InfluxDbPingResponse(bool success, TimeSpan responseTime, string version)
+        public PingResponse(bool success, TimeSpan responseTime, string version)
         {
             if (string.IsNullOrWhiteSpace(version)) throw new ArgumentNullException("version");
             Success = success;

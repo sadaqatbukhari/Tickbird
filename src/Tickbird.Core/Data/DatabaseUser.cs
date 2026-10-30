@@ -3,37 +3,33 @@
 namespace Tickbird.Core.Data
 {
     /// <summary>
-    /// Represents a tag value from a database measurement.
+    /// A InfluxDB database user.
     /// </summary>
-    public class InfluxDbTagValue
+    public class DatabaseUser
     {
         #region Fields
 
         /// <summary>
-        /// The name of the tag that the value belongs to.
+        /// The user's name.
         /// </summary>
         public readonly string Name;
 
         /// <summary>
-        /// The value for the tag.
+        /// Whether or not the user is a database administrator.
         /// </summary>
-        public readonly string Value;
+        public readonly bool IsAdmin;
 
         #endregion Fields
 
         #region Constructors
 
-        public InfluxDbTagValue(string name, string value)
+        public DatabaseUser(string name, bool isAdmin)
         {
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentNullException("name");
             Name = name;
-            Value = value;
+            IsAdmin = isAdmin;
         }
 
         #endregion Constructors
-
-        #region Methods
-
-        #endregion Methods
     }
 }

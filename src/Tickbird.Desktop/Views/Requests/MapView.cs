@@ -165,8 +165,8 @@ public sealed class MapView : UserControl
     private readonly StackPanel zoomButtons;
     private readonly Grid surface = new();
 
-    private InfluxDbSeries? current;
-    private IReadOnlyList<InfluxDbSeries>? all;
+    private ResultSeries? current;
+    private IReadOnlyList<ResultSeries>? all;
     private MapData? data;
     private string? fittedKey;
     private int renderedVersion = -1;
@@ -335,7 +335,7 @@ public sealed class MapView : UserControl
     /// <summary>The tracks currently drawn (exposed for tests).</summary>
     public MapData? Data => data;
 
-    public void SetResults(InfluxDbSeries result, IReadOnlyList<InfluxDbSeries>? allResults)
+    public void SetResults(ResultSeries result, IReadOnlyList<ResultSeries>? allResults)
     {
         current = result;
         all = allResults;
@@ -392,10 +392,10 @@ public sealed class MapView : UserControl
         }
     }
 
-    private IReadOnlyList<InfluxDbSeries> Sources() =>
+    private IReadOnlyList<ResultSeries> Sources() =>
         settings.CombineResults && all is { Count: > 1 } ? all : new[] { current! };
 
-    private void BindToolbar(MapData map, IReadOnlyList<InfluxDbSeries> sources)
+    private void BindToolbar(MapData map, IReadOnlyList<ResultSeries> sources)
     {
         binding = true;
         try

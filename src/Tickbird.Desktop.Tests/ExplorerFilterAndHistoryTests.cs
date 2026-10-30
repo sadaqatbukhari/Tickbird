@@ -33,7 +33,7 @@ public sealed class ExplorerFilterAndHistoryTests : IDisposable
 
     private static (TreeNodeViewModel Server, TreeNodeViewModel Telemetry, TreeNodeViewModel Gps, TreeNodeViewModel Cpu, TreeNodeViewModel Ems) Tree(MainWindowViewModel vm)
     {
-        var connection = new InfluxDbConnection("1", "Local", "127.0.0.1", 1, null, null);
+        var connection = new DatabaseConnection("1", "Local", "127.0.0.1", 1, null, null);
         var server = new TreeNodeViewModel("Local", NodeKind.Connection, null, connection);
         var telemetry = new TreeNodeViewModel("telemetry", NodeKind.Database, server);
         var gps = new TreeNodeViewModel("gps_position", NodeKind.Measurement, telemetry);
@@ -133,7 +133,7 @@ public sealed class ExplorerFilterAndHistoryTests : IDisposable
         try
         {
             var (window, vm, app) = Create();
-            var connection = new InfluxDbConnection("srv1", "Fleet", "127.0.0.1", (ushort)((IPEndPoint)server.LocalEndpoint).Port, null, null, useSsl: false);
+            var connection = new DatabaseConnection("srv1", "Fleet", "127.0.0.1", (ushort)((IPEndPoint)server.LocalEndpoint).Port, null, null, useSsl: false);
             app.Settings.Connections.Add(connection);
             Assert.Null(vm.FindConnectionNode("srv1"));
 

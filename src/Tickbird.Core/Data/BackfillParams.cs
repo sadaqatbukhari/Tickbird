@@ -6,7 +6,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// Contains parameter values needed to run a backfill query.
     /// </summary>
-    public class InfluxDbBackfillParams
+    public class BackfillParams
     {
         #region Properties
 

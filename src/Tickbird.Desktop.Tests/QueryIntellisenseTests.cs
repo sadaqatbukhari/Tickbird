@@ -11,10 +11,10 @@ public class QueryIntellisenseTests
 {
     private static async Task<(Window Host, QueryView View)> CreateAsync(string text)
     {
-        IReadOnlyList<InfluxDbMeasurementSchema> schema = new[]
+        IReadOnlyList<MeasurementSchema> schema = new[]
         {
-            new InfluxDbMeasurementSchema("cpu", new[] { new InfluxDbFieldKey("usage_idle", "float") }, new[] { "host" }),
-            new InfluxDbMeasurementSchema("mem", new[] { new InfluxDbFieldKey("used_percent", "float") }, new[] { "host" }),
+            new MeasurementSchema("cpu", new[] { new FieldKey("usage_idle", "float") }, new[] { "host" }),
+            new MeasurementSchema("mem", new[] { new FieldKey("used_percent", "float") }, new[] { "host" }),
         };
         var view = new QueryView { Database = "telegraf", SchemaLoader = () => Task.FromResult(schema) };
         var host = new Window { Content = view, Width = 900, Height = 600 };

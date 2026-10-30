@@ -1,4 +1,5 @@
 using Tickbird.Core.Data;
+using Tickbird.Core.Providers;
 using Tickbird.Core.Completion;
 using Tickbird.Core.Navigation;
 using Tickbird.Core.Query;
@@ -8,7 +9,7 @@ namespace Tickbird.Tests;
 
 public class ParityLogicTests
 {
-    private static InfluxDbSeries Sample() => new("m",
+    private static ResultSeries Sample() => new("m",
         new List<string> { "time", "host", "value" },
         new Dictionary<string, string>(),
         new List<IList<object>>
@@ -138,7 +139,7 @@ public class ParityLogicTests
     [Fact]
     public void Commands_NoSelection_DisablesEverythingNodeBased()
     {
-        var c = CommandAvailability.For(NodeKind.None, null, null, false, false);
+        var c = CommandAvailability.For(NodeKind.None, null, (DatabaseProfile?)null, false, false);
         Assert.False(c.Disconnect || c.Refresh || c.NewQuery || c.CreateDatabase);
     }
 
@@ -193,9 +194,9 @@ public class ParityLogicTests
     public void Settings_Merge_IsIdempotentById()
     {
         var settings = new TickbirdSettings();
-        var c = new InfluxDbConnection("1", "A", "h", 8086, "u", "p");
+        var c = new DatabaseConnection("1", "A", "h", 8086, "u", "p");
         Assert.Equal(1, settings.MergeConnections(new[] { c }));
-        Assert.Equal(0, settings.MergeConnections(new[] { new InfluxDbConnection("1", "A2", "h", 8086, "u", "p") }));
+        Assert.Equal(0, settings.MergeConnections(new[] { new DatabaseConnection("1", "A2", "h", 8086, "u", "p") }));
         Assert.Single(settings.Connections);
     }
 

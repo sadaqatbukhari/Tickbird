@@ -6,7 +6,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// Represents a response from an InfluxDB API request.
     /// </summary>
-    public class InfluxDbApiResponse
+    public class CommandResult
     {
         #region Fields
 
@@ -29,7 +29,7 @@ namespace Tickbird.Core.Data
 
         #region Constructors
 
-        public InfluxDbApiResponse(string body, HttpStatusCode statusCode, bool success)
+        public CommandResult(string body, HttpStatusCode statusCode, bool success)
         {
             if (string.IsNullOrWhiteSpace(body)) throw new ArgumentNullException("body");
             Body = body;

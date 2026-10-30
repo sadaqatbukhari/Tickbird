@@ -19,7 +19,7 @@ public static class ResultExporter
         return "\"" + value.Replace("\"", "\"\"") + "\"";
     }
 
-    public static void WriteCsv(TextWriter writer, InfluxDbSeries result, ResultFormatter formatter, ISet<int>? onlyRows = null)
+    public static void WriteCsv(TextWriter writer, ResultSeries result, ResultFormatter formatter, ISet<int>? onlyRows = null)
     {
         writer.WriteLine(string.Join(",", result.Columns.Select(EscapeCsv)));
         for (var rowIndex = 0; rowIndex < result.Values.Count; rowIndex++)
@@ -33,7 +33,7 @@ public static class ResultExporter
         }
     }
 
-    public static void WriteJson(TextWriter writer, InfluxDbSeries result, ISet<int>? onlyRows = null)
+    public static void WriteJson(TextWriter writer, ResultSeries result, ISet<int>? onlyRows = null)
     {
         var serializer = JsonSerializer.CreateDefault();
         using var json = new JsonTextWriter(writer) { Formatting = Formatting.Indented, CloseOutput = false };
@@ -51,7 +51,7 @@ public static class ResultExporter
     }
 
     /// <summary>Tab-separated text with a header row, as used by Copy Row(s).</summary>
-    public static string ToTabSeparated(InfluxDbSeries result, ResultFormatter formatter, IEnumerable<int> rows)
+    public static string ToTabSeparated(ResultSeries result, ResultFormatter formatter, IEnumerable<int> rows)
     {
         var builder = new StringBuilder();
         builder.AppendLine(string.Join("\t", result.Columns.Select(EscapeTabSeparated)));

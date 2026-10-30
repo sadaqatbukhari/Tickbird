@@ -6,7 +6,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// Represents a point in an InfluxDB database/measurement/series.
     /// </summary>
-    public class InfluxDbPoint
+    public class DataPoint
     {
         #region Fields
 
@@ -34,7 +34,7 @@ namespace Tickbird.Core.Data
 
         #region Constructors
 
-        public InfluxDbPoint(string measurement, 
+        public DataPoint(string measurement, 
             IDictionary<string, object> tags, IDictionary<string, object> fields, DateTime? timeStamp = null)
         {
             if (string.IsNullOrWhiteSpace(measurement)) throw new ArgumentNullException("measurement");

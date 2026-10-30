@@ -90,7 +90,7 @@ public sealed class MainWindowTests : IDisposable
     [AvaloniaFact]
     public void ResultsView_AddsRowNumberColumn_AndLoadsRows()
     {
-        var series = new Tickbird.Core.Data.InfluxDbSeries("m", new List<string> { "time", "v" },
+        var series = new Tickbird.Core.Data.ResultSeries("m", new List<string> { "time", "v" },
             new Dictionary<string, string> { ["host"] = "a" },
             new List<IList<object>> { new List<object> { "2024-01-02T03:04:05Z", 1 }, new List<object> { "2024-01-02T03:04:06Z", 2 } });
         Create();
@@ -110,7 +110,7 @@ public sealed class MainWindowTests : IDisposable
         var window = Create();
         window.Show();
         var vm = (MainWindowViewModel)window.DataContext!;
-        var connection = new Tickbird.Core.Data.InfluxDbConnection("1", "Local", "127.0.0.1", 1, null, null);
+        var connection = new Tickbird.Core.Data.DatabaseConnection("1", "Local", "127.0.0.1", 1, null, null);
         var server = new TreeNodeViewModel(connection.Name, Tickbird.Core.Navigation.NodeKind.Connection, null, connection);
         var db = new TreeNodeViewModel("telemetry", Tickbird.Core.Navigation.NodeKind.Database, server);
         var measurement = new TreeNodeViewModel("gps", Tickbird.Core.Navigation.NodeKind.Measurement, db);
@@ -131,7 +131,7 @@ public sealed class MainWindowTests : IDisposable
     public void ResultsGrid_ColumnsAreResizable_AndSizedToContent()
     {
         Create();
-        var series = new Tickbird.Core.Data.InfluxDbSeries("m", new List<string> { "time", "v", "a_long_column_name_for_status" },
+        var series = new Tickbird.Core.Data.ResultSeries("m", new List<string> { "time", "v", "a_long_column_name_for_status" },
             new Dictionary<string, string>(),
             new List<IList<object>> { new List<object> { "2024-01-02T03:04:05Z", 1, "ok" } });
         var view = new ResultsView();

@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Tickbird.Core.Data;
+using Tickbird.Core.Providers;
 using Tickbird.Core.Navigation;
 
 namespace Tickbird.Desktop.Views.Requests;
@@ -63,7 +64,7 @@ public sealed class TagValuesView : MeasurementView
         if (selected == null) return new TableData(new[] { "tagValue" }, new List<IReadOnlyList<string?>>());
         var values = await Client.GetTagValuesAsync(Database, Measurement, selected);
         return new TableData(new[] { "tagValue" },
-            (values ?? Enumerable.Empty<InfluxDbTagValue>()).Select(v => (IReadOnlyList<string?>)new[] { v.Value }).ToList());
+            (values ?? Enumerable.Empty<TagValue>()).Select(v => (IReadOnlyList<string?>)new[] { v.Value }).ToList());
     }
 }
 
@@ -89,7 +90,7 @@ public sealed class FieldKeysView : MeasurementView
 
     public override string ExportFileNameStem => "field_keys";
 
-    private static string Describe(InfluxDbRetentionPolicy p) => p.Name + (p.Default ? " (default)" : string.Empty);
+    private static string Describe(RetentionPolicy p) => p.Name + (p.Default ? " (default)" : string.Empty);
 
     public override async Task ExecuteAsync()
     {
@@ -108,8 +109,9 @@ public sealed class FieldKeysView : MeasurementView
 
     protected override async Task<TableData> LoadAsync()
     {
-        List<InfluxDbFieldKey> fields;
-        var supportsPolicies = Client.Connection.ServerVersion == InfluxDbServerVersion.InfluxDb1;
+        List<FieldKey> fields;
+        // Only InfluxDB 1.x keeps fields per retention policy.
+        var supportsPolicies = Client.Connection.Kind == DatabaseKind.InfluxDb1;
         policyPanel.IsVisible = supportsPolicies;
         if (!supportsPolicies)
         {
@@ -118,7 +120,7 @@ public sealed class FieldKeysView : MeasurementView
         else if (!policiesLoaded)
         {
             var ordered = RetentionPolicyRules.OrderForFields(await Client.GetRetentionPoliciesAsync(Database));
-            fields = new List<InfluxDbFieldKey>();
+            fields = new List<FieldKey>();
             var selected = ordered.FirstOrDefault();
             // Select the default policy when it has fields, otherwise the first policy that does.
             foreach (var policy in ordered)
@@ -131,17 +133,17 @@ public sealed class FieldKeysView : MeasurementView
             }
             updatingPolicies = true;
             policies.ItemsSource = ordered;
-            policies.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<InfluxDbRetentionPolicy>(
+            policies.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<RetentionPolicy>(
                 (p, _) => new TextBlock { Text = p == null ? "" : Describe(p) });
             policies.SelectedItem = selected;
             updatingPolicies = false;
             policiesLoaded = true;
         }
-        else if (policies.SelectedItem is InfluxDbRetentionPolicy policy)
+        else if (policies.SelectedItem is RetentionPolicy policy)
         {
             fields = (await Client.GetFieldKeysAsync(Database, Measurement, policy.Name)).ToList();
         }
-        else fields = new List<InfluxDbFieldKey>();
+        else fields = new List<FieldKey>();
 
         return new TableData(new[] { "fieldKey", "fieldType" },
             fields.Select(f => (IReadOnlyList<string?>)new[] { f.Name, f.Type }).ToList());

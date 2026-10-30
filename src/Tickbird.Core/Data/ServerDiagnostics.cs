@@ -6,7 +6,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// Contains diagnostics information for an InfluxDB server.
     /// </summary>
-    public class InfluxDbDiagnostics
+    public class ServerDiagnostics
     {
         #region Properties
 
@@ -69,6 +69,12 @@ namespace Tickbird.Core.Data
         /// The version of the InfluxDB GO runtime.
         /// </summary>
         public string GoVersion { get; set; }
+
+        /// <summary>
+        /// Name/value rows for databases that report their own facts (PostgreSQL, TimescaleDB...). When set, the
+        /// diagnostics tab shows these instead of the InfluxDB fields above.
+        /// </summary>
+        public IList<KeyValuePair<string, string>> Properties { get; set; }
 
         #endregion Properties
 

@@ -3,7 +3,7 @@
     /// <summary>
     /// Different user database permissions.
     /// </summary>
-    public enum InfluxDbPrivileges
+    public enum DatabasePrivileges
     {
         /// <summary>
         /// No privileges specified; uninitialized privilege.

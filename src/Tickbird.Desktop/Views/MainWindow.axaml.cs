@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
 using Tickbird.Core.Data;
+using Tickbird.Core.Providers;
 using Tickbird.Core.History;
 using Tickbird.Core.Navigation;
 using Tickbird.Core.Query;
@@ -38,7 +39,7 @@ public partial class MainWindow : Window
         Vm.PropertyChanged += (_, e) =>
         {
             // Stop depends on the selected tab's query, not only on the command set.
-            if (e.PropertyName is nameof(MainWindowViewModel.Commands) or nameof(MainWindowViewModel.SelectedTab)) ApplyCommandState();
+            if (e.PropertyName is nameof(MainWindowViewModel.Commands) or nameof(MainWindowViewModel.SelectedTab) or nameof(MainWindowViewModel.SelectedNode)) ApplyCommandState();
         };
         BuildToolBar();
         BuildMenuState();
@@ -133,7 +134,7 @@ public partial class MainWindow : Window
             var content = item.Text != null
                 ? (object)new TextBlock { Text = item.Text, FontWeight = Avalonia.Media.FontWeight.Bold, FontSize = 14, Foreground = Avalonia.Media.Brush.Parse("#1a65a7"), Width = 20, TextAlignment = Avalonia.Media.TextAlignment.Center }
                 : new Image { Source = ShellIcons.Get(item.Icon), Width = 18, Height = 18 };
-            var button = new Button { Content = content };
+            var button = new Button { Content = content, Tag = item.Icon };
             button.Classes.Add("shellTool");
             ToolTip.SetTip(button, item.Tip);
             var action = item.Action;
@@ -201,7 +202,9 @@ public partial class MainWindow : Window
     {
         var commands = Vm.Commands;
         foreach (var (control, enabled) in commandControls) control.IsEnabled = enabled(commands);
+        ApplyToolbarTerms();
     }
+
 
     private void BuildTreeContextMenu()
     {
@@ -229,10 +232,11 @@ public partial class MainWindow : Window
                     });
                     break;
                 case NodeKind.Connection:
+                    var terms = node.Connection.Profile.Terms;
                     Add("Refresh", "Refresh", () => Do(RefreshNode));
-                    Add("Create Database", "CreateDatabase", () => Do(CreateDatabase));
-                    Add("Show Retention Policies", "RetentionPolicy", () => OpenRequestTab(n => new RetentionPolicyView(), "RetentionPolicy", n => n.Connection.Name + ".policies"), c.ShowPolicies);
-                    Add("Show Users", "Users", () => OpenRequestTab(n => new UsersView(), "Users", n => n.Connection.Name + ".users"), c.ShowUsers);
+                    Add("Create Database", "CreateDatabase", () => Do(CreateDatabase), c.CreateDatabase);
+                    Add("Show " + terms.RetentionPolicies, "RetentionPolicy", () => OpenRequestTab(n => new RetentionPolicyView(), "RetentionPolicy", n => n.Connection.Name + ".policies"), c.ShowPolicies);
+                    Add("Show " + terms.Users, "Users", () => OpenRequestTab(n => new UsersView(), "Users", n => n.Connection.Name + ".users"), c.ShowUsers);
                     Add("Show Queries", "ShowQueries", ShowQueries, c.ShowQueries);
                     Add("Show Statistics", "Stats", () => OpenRequestTab(n => new StatsView(), "Stats", n => n.Connection.Name + ".statistics"), c.ShowStats);
                     Add("Diagnostics", "Diagnostics", () => OpenRequestTab(n => new DiagnosticsView(), "Diagnostics", n => n.Connection.Name + ".diagnostics"), c.ShowDiagnostics);
@@ -241,22 +245,47 @@ public partial class MainWindow : Window
                 case NodeKind.Database:
                     Add("Refresh", "Refresh", () => Do(RefreshNode));
                     Add("New Query", "NewQuery", () => Do(NewQuery));
-                    Add("Show Continuous Queries", "ContinuousQuery", () => Do(ShowContinuousQueries), c.ContinuousQueries);
+                    Add("Show " + node.Connection.Profile.Terms.ContinuousQueries, "ContinuousQuery", () => Do(ShowContinuousQueries), c.ContinuousQueries);
                     Add("Run Backfill", "BackFill", () => Do(RunBackfill), c.Backfill);
                     Add("Drop Database", "DropDatabase", () => Do(DropDatabase), c.DropDatabase);
                     break;
                 case NodeKind.Measurement:
+                    var words = node.Connection.Profile.Terms;
                     Add("New Query", "NewQuery", () => Do(NewQuery));
-                    Add("Show Tag Keys", "TagKeys", () => OpenMeasurement<TagKeysView>("tag_keys", "TagKeys"));
-                    Add("Show Tag Values", "TagValues", () => OpenMeasurement<TagValuesView>("tag_values", "TagValues"));
-                    Add("Show Field Keys", "FieldKeys", () => OpenMeasurement<FieldKeysView>("field_keys", "FieldKeys"));
-                    Add("Show Series", "Series", () => OpenMeasurement<SeriesView>("series", "Series"), c.ShowSeries);
-                    Add("Drop Measurement", "DropMeasurement", () => Do(DropMeasurement));
-                    Add("Drop Series", "DropSeries", () => Do(DropSeries), c.DropSeries);
+                    Add("Show " + words.TagKeys, "TagKeys", () => OpenMeasurement<TagKeysView>("tag_keys", "TagKeys"), c.TagKeys);
+                    Add("Show " + words.TagValues, "TagValues", () => OpenMeasurement<TagValuesView>("tag_values", "TagValues"), c.TagValues);
+                    Add("Show " + words.FieldKeys, "FieldKeys", () => OpenMeasurement<FieldKeysView>("field_keys", "FieldKeys"), c.FieldKeys);
+                    Add("Show " + words.Series, "Series", () => OpenMeasurement<SeriesView>("series", "Series"), c.ShowSeries);
+                    Add("Drop " + words.Measurement, "DropMeasurement", () => Do(DropMeasurement), c.DropMeasurement);
+                    Add(words.DropSeries, "DropSeries", () => Do(DropSeries), c.DropSeries);
                     break;
             }
         };
         Tree.ContextMenu = menu;
+    }
+
+    /// <summary>Toolbar tooltips use the words of the selected connection's database (Tag Keys, Columns...).</summary>
+    private void ApplyToolbarTerms()
+    {
+        var terms = (Vm.SelectedNode is { HasConnection: true } node ? node.Connection.Profile : DatabaseProfiles.Get(DatabaseKind.InfluxDb1)).Terms;
+        foreach (var (control, _) in commandControls)
+        {
+            if (control is not Button { Tag: string icon } button) continue;
+            var tip = icon switch
+            {
+                "RetentionPolicy" => "Show " + terms.RetentionPolicies,
+                "Users" => "Show " + terms.Users,
+                "ContinuousQuery" => "Show " + terms.ContinuousQueries,
+                "TagKeys" => "Show " + terms.TagKeys,
+                "TagValues" => "Show " + terms.TagValues,
+                "FieldKeys" => "Show " + terms.FieldKeys,
+                "Series" => "Show " + terms.Series,
+                "DropSeries" => terms.DropSeries,
+                "DropMeasurement" => "Drop " + terms.Measurement,
+                _ => null
+            };
+            if (tip != null) ToolTip.SetTip(button, tip);
+        }
     }
 
     private void ApplySettings()
@@ -439,7 +468,7 @@ public partial class MainWindow : Window
             TimeFormat = app.Settings.TimeFormat, DateFormat = app.Settings.DateFormat,
             AllowUntrustedSsl = app.Settings.AllowUntrustedSsl,
             Groups = app.Settings.AllGroups().ToList(),
-            Connections = app.Settings.Connections.Select(c => new InfluxDbConnection(c.Id, c.Name, c.Host, c.Port, c.Username, null, c.UseSsl, c.Database, c.ServerVersion, null) { Group = c.Group }).ToList()
+            Connections = app.Settings.Connections.Select(c => new DatabaseConnection(c.Id, c.Name, c.Host, c.Port, c.Username, null, c.UseSsl, c.Database, c.ServerVersion, null) { Group = c.Group, Kind = c.Kind }).ToList()
         };
         await File.WriteAllTextAsync(path, JsonConvert.SerializeObject(export, Formatting.Indented));
         Vm.Status = "Settings exported (passwords and tokens are not included).";
@@ -466,7 +495,7 @@ public partial class MainWindow : Window
         if (chosen != null) await RenderConnection(chosen);
     }
 
-    private async Task RenderConnection(InfluxDbConnection connection)
+    private async Task RenderConnection(DatabaseConnection connection)
     {
         app.Connect(connection);
         var node = new TreeNodeViewModel(connection.Name, NodeKind.Connection, null, connection);
@@ -609,8 +638,9 @@ public partial class MainWindow : Window
     private async Task DropMeasurement(TreeNodeViewModel node)
     {
         if (node.Kind != NodeKind.Measurement) return;
-        if (!await Dialogs.ConfirmByNameAsync(this, "Drop Measurement",
-                $"Drop measurement \"{node.Name}\" from database \"{node.Parent!.Name}\" on {node.Connection.Name}? All of its data will be permanently deleted.",
+        var measurementWord = node.Connection.Profile.Terms.Measurement.ToLowerInvariant();
+        if (!await Dialogs.ConfirmByNameAsync(this, "Drop " + node.Connection.Profile.Terms.Measurement,
+                $"Drop {measurementWord} \"{node.Name}\" from database \"{node.Parent!.Name}\" on {node.Connection.Name}? All of its data will be permanently deleted.",
                 node.Name)) return;
         var response = await app.Connect(node.Connection).DropMeasurementAsync(node.Parent!.Name, node.Name);
         if (!response.Success) { await Dialogs.ShowErrorAsync(this, response.Body, "Error Dropping Measurement"); return; }
@@ -623,8 +653,9 @@ public partial class MainWindow : Window
     private async Task DropSeries(TreeNodeViewModel node)
     {
         if (node.Kind != NodeKind.Measurement) return;
-        if (!await Dialogs.ConfirmByNameAsync(this, "Drop Series",
-                $"Drop all series of measurement \"{node.Name}\" in database \"{node.Parent!.Name}\" on {node.Connection.Name}? Their data will be permanently deleted.",
+        var terms = node.Connection.Profile.Terms;
+        if (!await Dialogs.ConfirmByNameAsync(this, terms.DropSeries,
+                $"{terms.DropSeries}: delete all data of {terms.Measurement.ToLowerInvariant()} \"{node.Name}\" in database \"{node.Parent!.Name}\" on {node.Connection.Name}? The data will be permanently deleted.",
                 node.Name)) return;
         var response = await app.Connect(node.Connection).DropSeriesAsync(node.Parent!.Name, node.Name);
         if (!response.Success) await Dialogs.ShowErrorAsync(this, response.Body, "Error Dropping Series");
@@ -700,13 +731,13 @@ public partial class MainWindow : Window
         if (node.Kind is not (NodeKind.Database or NodeKind.Measurement)) return Task.CompletedTask;
         var connection = node.Connection;
         var measurement = node.Kind == NodeKind.Measurement ? node.Name : "measurement";
-        OpenQueryTab(connection, node.DatabaseName, QueryText.SampleQuery(connection.ServerVersion, measurement),
+        OpenQueryTab(connection, node.DatabaseName, QueryText.SampleQuery(connection.Profile, measurement),
             node.Kind == NodeKind.Measurement ? node.Name : null);
         return Task.CompletedTask;
     }
 
     /// <summary>Opens a new, independent query tab with the given text.</summary>
-    private QueryView OpenQueryTab(InfluxDbConnection connection, string? database, string text, string? measurement = null)
+    private QueryView OpenQueryTab(DatabaseConnection connection, string? database, string text, string? measurement = null)
     {
         var view = new QueryView { Client = app.Connect(connection), Database = database };
         view.RunningChanged += (_, _) => ApplyCommandState();
@@ -758,7 +789,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Checks the server answers, adds it to the Object Explorer and selects the query's database.</summary>
-    private async Task<bool> ConnectForHistoryAsync(InfluxDbConnection connection, string? database)
+    private async Task<bool> ConnectForHistoryAsync(DatabaseConnection connection, string? database)
     {
         Vm.Status = $"Connecting to {connection.Name}…";
         string? problem;

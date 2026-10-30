@@ -15,10 +15,10 @@ public static class ChartDataBuilder
 {
     private static readonly string[] TimeColumnNames = { "time", "timestamp", "_time" };
 
-    public static ChartData Build(IEnumerable<InfluxDbSeries> results, ChartOptions? options = null)
+    public static ChartData Build(IEnumerable<ResultSeries> results, ChartOptions? options = null)
     {
         options ??= new ChartOptions();
-        var sources = (results ?? Enumerable.Empty<InfluxDbSeries>())
+        var sources = (results ?? Enumerable.Empty<ResultSeries>())
             .Where(s => s != null && s.Columns.Count > 0).ToList();
         if (sources.Count == 0 || sources.All(s => s.Values.Count == 0)) return ChartData.Empty("The query returned no rows to chart.");
 
@@ -57,7 +57,7 @@ public static class ChartDataBuilder
             : BuildCategory(sources, numeric, visible, text, splitCandidates, options);
     }
 
-    private static ChartData BuildTime(List<InfluxDbSeries> sources, string timeColumn, List<string> numeric, List<string> visible,
+    private static ChartData BuildTime(List<ResultSeries> sources, string timeColumn, List<string> numeric, List<string> visible,
         List<string> text, List<string> splitCandidates, string? splitBy, ChartOptions options)
     {
         var showName = sources.Select(s => s.Name ?? "").Distinct().Count() > 1;
@@ -127,14 +127,14 @@ public static class ChartDataBuilder
         };
     }
 
-    private static ChartData BuildCategory(List<InfluxDbSeries> sources, List<string> numeric, List<string> visible,
+    private static ChartData BuildCategory(List<ResultSeries> sources, List<string> numeric, List<string> visible,
         List<string> text, List<string> splitCandidates, ChartOptions options)
     {
         // Label bars with the first text column; otherwise with the series tags or name; otherwise the row number.
         var labelColumn = text.FirstOrDefault();
         var showName = sources.Select(s => s.Name ?? "").Distinct().Count() > 1;
         var categories = new List<string>();
-        var rows = new List<(InfluxDbSeries Source, IList<object> Row)>();
+        var rows = new List<(ResultSeries Source, IList<object> Row)>();
         foreach (var source in sources)
         {
             var labelIndex = labelColumn != null ? source.GetColumnIndex(labelColumn) : -1;
@@ -181,7 +181,7 @@ public static class ChartDataBuilder
     }
 
     /// <summary>A column named time/timestamp, or else the first column whose values are all timestamps.</summary>
-    private static string? FindTimeColumn(List<InfluxDbSeries> sources)
+    private static string? FindTimeColumn(List<ResultSeries> sources)
     {
         foreach (var name in TimeColumnNames)
         {
@@ -196,7 +196,7 @@ public static class ChartDataBuilder
         return null;
     }
 
-    private static IEnumerable<object?> Cells(IEnumerable<InfluxDbSeries> sources, string column)
+    private static IEnumerable<object?> Cells(IEnumerable<ResultSeries> sources, string column)
     {
         foreach (var source in sources)
         {
@@ -207,7 +207,7 @@ public static class ChartDataBuilder
         }
     }
 
-    private static int DistinctCount(IEnumerable<InfluxDbSeries> sources, string column, int stopAfter)
+    private static int DistinctCount(IEnumerable<ResultSeries> sources, string column, int stopAfter)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var cell in Cells(sources, column))
@@ -225,7 +225,7 @@ public static class ChartDataBuilder
         return true;
     }
 
-    private static string Label(InfluxDbSeries source, string field, bool showName, string? splitBy, string splitValue)
+    private static string Label(ResultSeries source, string field, bool showName, string? splitBy, string splitValue)
     {
         var name = showName && !string.IsNullOrEmpty(source.Name) ? source.Name + "." + field : field;
         var parts = source.Tags.Select(t => $"{t.Key}={t.Value}").ToList();
@@ -233,7 +233,7 @@ public static class ChartDataBuilder
         return parts.Count == 0 ? name : $"{name} {{{string.Join(", ", parts)}}}";
     }
 
-    private static string SeriesSuffix(InfluxDbSeries source, bool showName)
+    private static string SeriesSuffix(ResultSeries source, bool showName)
     {
         var tags = string.Join(", ", source.Tags.Select(t => $"{t.Key}={t.Value}"));
         var name = showName ? source.Name ?? "" : "";

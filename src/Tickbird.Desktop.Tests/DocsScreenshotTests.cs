@@ -46,14 +46,14 @@ public class DocsScreenshotTests
 
     private static DateTime T(int minute) => new(2026, 10, 21, 7, minute, 0, DateTimeKind.Utc);
 
-    private static InfluxDbSeries Cpu() =>
+    private static ResultSeries Cpu() =>
         new("cpu", new List<string> { "time", "host", "usage_user", "usage_system" }, new Dictionary<string, string>(),
             Enumerable.Range(0, 48).Select(i => (IList<object>)new List<object>
             {
                 T(i), "web-1", Math.Round(35 + Math.Sin(i / 5.0) * 12 + (i % 7), 2), Math.Round(12 + Math.Cos(i / 6.0) * 4, 2)
             }).ToList());
 
-    private static InfluxDbSeries Gps() =>
+    private static ResultSeries Gps() =>
         new("gps", new List<string> { "time", "latitude", "longitude", "state", "speed" }, new Dictionary<string, string>(),
             Enumerable.Range(0, 120).Select(i => (IList<object>)new List<object>
             {
@@ -66,7 +66,7 @@ public class DocsScreenshotTests
 
     private static TreeNodeViewModel AddServer(MainWindowViewModel vm, string id, string name, string? group, params string[] databases)
     {
-        var connection = new InfluxDbConnection(id, name, "localhost", 8086, "u", "p") { Group = group };
+        var connection = new DatabaseConnection(id, name, "localhost", 8086, "u", "p") { Group = group };
         var server = new TreeNodeViewModel(name, NodeKind.Connection, null, connection);
         foreach (var database in databases)
         {
@@ -170,9 +170,9 @@ public class DocsScreenshotTests
         blank.Close();
 
         app.Settings.Groups.AddRange(new[] { "PROD", "DEV" });
-        app.Settings.Connections.Add(new InfluxDbConnection("1", "Production", "influx.example.com", 8086, "admin", "x", true, "telemetry") { Group = "PROD" });
-        app.Settings.Connections.Add(new InfluxDbConnection("2", "Staging", "staging.example.com", 8181, null, null, true, "telemetry") { Group = "DEV" });
-        app.Settings.Connections.Add(new InfluxDbConnection("3", "Local InfluxDB", "localhost", 8086, null, null));
+        app.Settings.Connections.Add(new DatabaseConnection("1", "Production", "influx.example.com", 8086, "admin", "x", true, "telemetry") { Group = "PROD" });
+        app.Settings.Connections.Add(new DatabaseConnection("2", "Staging", "staging.example.com", 8181, null, null, true, "telemetry") { Group = "DEV" });
+        app.Settings.Connections.Add(new DatabaseConnection("3", "Local InfluxDB", "localhost", 8086, null, null));
         var manage = new ManageConnectionsWindow(app) { Width = 1100, Height = 360 };
         manage.Show();
         Save(manage, "ManageConnectionsDialog_WithLocalhost.png");
@@ -185,7 +185,7 @@ public class DocsScreenshotTests
 
         var owner = new Window { Width = 900, Height = 700 };
         owner.Show();
-        var existing = new InfluxDbConnection("1", "Production", "influx.example.com", 8086, "admin", "secret", true, "telemetry") { Group = "PROD" };
+        var existing = new DatabaseConnection("1", "Production", "influx.example.com", 8086, "admin", "secret", true, "telemetry") { Group = "PROD" };
         var pending = TickbirdDialogs.ConnectionAsync(owner, existing, app.Settings);
         if (pending.IsFaulted) await pending;
         var dialog = Assert.Single(owner.OwnedWindows);

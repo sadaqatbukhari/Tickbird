@@ -1,16 +1,19 @@
 <p align="center"><img src="src/Tickbird.Desktop/Assets/BrandLogo.png" alt="Tickbird" height="72"></p>
 
 # Tickbird
-**Tickbird is a cross-platform desktop client for exploring and managing time series databases. It currently supports [InfluxDB](https://www.influxdata.com/time-series-platform/influxdb/), with support for more time series databases planned.**
+**Tickbird is a cross-platform desktop client for exploring and managing time series databases. It currently supports [InfluxDB](https://www.influxdata.com/time-series-platform/influxdb/) (1.x and 3.x) and [TimescaleDB](https://www.timescale.com/), and is built so that more databases (such as CrateDB and QuestDB) can be added.**
 
 Its inspiration comes from other similar database management tools such as [SQL Server Management Studio](https://en.wikipedia.org/wiki/SQL_Server_Management_Studio)
-. Tickbird supports both InfluxDB 1.x and InfluxDB 3.x.
-The 1.x integration uses InfluxData's official `InfluxDB.Client` package, while the 3.x
-integration uses the official `InfluxDB3.Client` package.
+. Tickbird supports InfluxDB 1.x, InfluxDB 3.x and TimescaleDB.
+The 1.x integration uses InfluxData's official `InfluxDB.Client` package, the 3.x
+integration uses the official `InfluxDB3.Client` package, and TimescaleDB uses the
+[Npgsql](https://www.npgsql.org/) PostgreSQL driver.
 
 ## Current Release Features
 
 * **InfluxDB 1.x and 3.x connections** - Choose the server generation when creating or editing a connection.
+* **TimescaleDB** - Manage a TimescaleDB (PostgreSQL) server with the same tools as InfluxDB: databases, hypertables, tags and fields, chunks, retention policies, continuous aggregates, backfill, roles and privileges, running queries, diagnostics and statistics. See [Working with TimescaleDB](#working-with-timescaledb).
+* **Built for more databases** - Each database is described by a profile (what it can do, its words and defaults) and one client class, and the tree, menus, query editor, results, charts and maps are shared. See [adding a database](docs/adding-a-database.md).
 * **Official InfluxData clients** - Both integrations use the standard packages maintained by InfluxData.
 * **InfluxDB 3 SQL support** - Browse databases and tables, run SQL queries, write data, and perform health checks.
 * **Optional InfluxDB 1.x authentication** - Anonymous servers can be tested and used without entering a username or password.
@@ -55,6 +58,7 @@ The following are planned features that are not yet implemented in the current v
  - [Managing Connections](#managing-connections)
    - [Connection Settings](#connection-settings)
    - [Connection Groups](#connection-groups)
+   - [Working with TimescaleDB](#working-with-timescaledb)
  - [Connecting to a Server](#connecting-to-a-server)
  - [Working with Connections](#working-with-connections)
    - [Showing Server Diagnostics](#showing-server-diagnostics)
@@ -165,7 +169,7 @@ Press the **Create** button to add your first InfluxDB connection using the **Co
 Use the Connection Settings dialog to configure the details of the InfluxDB connection:
 
  * **Name** - The name of the connection. This is the label you will see when working with this connection.
- * **Version** - Select **InfluxDB 1.x** or **InfluxDB 3.x**.
+ * **Version** - Select the database: **InfluxDB 1.x**, **InfluxDB 3.x** or **TimescaleDB**. The port, the sign-in fields and the available commands follow your choice.
  * **Group** - Optional. Pick an existing group or type a new name, for example `PROD`. See [Connection Groups](#connection-groups).
  * **Address** - The InfluxDB server's host URI. Exclude protocol information. **Port** is filled in to the right.
  * **Database** - The database to use for the connection. Leave this blank to list all databases _(requires admin privileges)_.
@@ -173,7 +177,7 @@ Use the Connection Settings dialog to configure the details of the InfluxDB conn
  * **API Token** - Bearer token for an InfluxDB 3.x connection.
  * **Use SSL** - Whether or not to use SSL security (HTTPS) when connecting to InfluxDB.
 
-InfluxDB 1.x defaults to port `8086`; InfluxDB 3.x defaults to port `8181`.
+InfluxDB 1.x defaults to port `8086`; InfluxDB 3.x defaults to port `8181`; TimescaleDB defaults to port `5432`.
 InfluxDB 3 connections use SQL for queries. Database and table browsing, database creation/deletion,
 tag and field discovery, table deletion, queries, writes, and health checks are supported.
 InfluxDB 1.x-only commands (users and privileges, continuous queries, retention policies,
@@ -198,6 +202,29 @@ Groups keep many servers manageable, for example separating production from deve
 * **Import and export** - Groups are part of the exported settings, and importing adds groups that are not already present.
 
 ![Connection Groups](docs/img/Connections_Groups.png?raw=true "Connection Groups")
+
+### Working with TimescaleDB
+
+Choose **TimescaleDB** as the **Version** in the connection dialog and enter the server, a user name and a password. **Database** can stay empty to list every database on the server, or name one to show only that database (use this when your account cannot connect to the `postgres` database, as on some cloud services). **Use SSL** requires an encrypted connection; without it Tickbird uses SSL when the server offers it. TimescaleDB is PostgreSQL, so connect to a server that has the `timescaledb` extension (**Create Database** installs it in new databases when your account may).
+
+TimescaleDB's concepts appear with the same commands as InfluxDB's, under TimescaleDB's own names:
+
+| In Tickbird (InfluxDB) | In TimescaleDB |
+| --- | --- |
+| Database | Database |
+| Measurement | Table or hypertable (tables outside `public` show as `schema.table`) |
+| Tag Keys / Tag Values | **Text Columns** and their distinct values (up to 1,000) |
+| Field Keys | **Columns**: every other column with its type |
+| Series | **Chunks** of a hypertable (range and compression), or the tag combinations of a plain table |
+| Drop Series | **Truncate Table**: deletes all rows and keeps the table |
+| Retention Policies | One policy per hypertable (`add_retention_policy`): the table and how long to keep its data |
+| Continuous Queries | **Continuous Aggregates**: a named view with a time bucket, group-by columns and aggregates, plus a refresh policy |
+| Run Backfill | Downsamples existing data of a time range into a table (created when missing) |
+| Users and Privileges | **Roles** (administrator = superuser) and read, write or all rights on the tables of a database |
+| Show Queries | Active sessions (`pg_stat_activity`); **Kill Query** cancels the statement |
+| Diagnostics / Statistics | Server and extension versions, uptime and connections; database, table, session, hypertable and background job statistics |
+
+Queries are PostgreSQL SQL, with `time_bucket()`, `first()`, `last()` and the other TimescaleDB functions in the IntelliSense list. Results can be shown as a grid, chart or map like any other result, and timestamps are shown in UTC.
 
 ## Connecting to a Server
 

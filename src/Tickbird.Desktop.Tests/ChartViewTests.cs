@@ -26,11 +26,11 @@ public sealed class ChartViewTests : IDisposable
 
     private static DateTime T(int minute) => new(2024, 1, 2, 3, minute, 0, DateTimeKind.Utc);
 
-    private static InfluxDbSeries Cpu(string host, double offset) =>
+    private static ResultSeries Cpu(string host, double offset) =>
         new("cpu", new List<string> { "time", "usage", "idle" }, new Dictionary<string, string> { ["host"] = host },
             Enumerable.Range(0, 30).Select(i => (IList<object>)new List<object> { T(i), offset + Math.Sin(i / 4.0) * 10 + 40, 60 - offset }).ToList());
 
-    private static (ResultsView View, Window Host) Show(InfluxDbSeries series, ChartSettings? settings = null, IReadOnlyList<InfluxDbSeries>? all = null)
+    private static (ResultsView View, Window Host) Show(ResultSeries series, ChartSettings? settings = null, IReadOnlyList<ResultSeries>? all = null)
     {
         var view = new ResultsView { ChartSettings = settings ?? new ChartSettings(), AllResults = all };
         var host = new Window { Content = view, Width = 1000, Height = 520 };
@@ -93,7 +93,7 @@ public sealed class ChartViewTests : IDisposable
     [AvaloniaFact]
     public async Task ResultWithoutTime_IsDrawnAsBars()
     {
-        var counts = new InfluxDbSeries("counts", new List<string> { "host", "count" }, new Dictionary<string, string>(),
+        var counts = new ResultSeries("counts", new List<string> { "host", "count" }, new Dictionary<string, string>(),
             new List<IList<object>> { new List<object> { "web-1", 10L }, new List<object> { "web-2", 25L } });
         var (view, host) = Show(counts, new ChartSettings { ShowChart = true });
         await view.Chart!.RefreshAsync();
@@ -106,7 +106,7 @@ public sealed class ChartViewTests : IDisposable
     [AvaloniaFact]
     public async Task TextOnlyResult_ExplainsWhyThereIsNoChart()
     {
-        var names = new InfluxDbSeries("measurements", new List<string> { "name" }, new Dictionary<string, string>(),
+        var names = new ResultSeries("measurements", new List<string> { "name" }, new Dictionary<string, string>(),
             new List<IList<object>> { new List<object> { "cpu" }, new List<object> { "mem" } });
         var (view, host) = Show(names, new ChartSettings { ShowChart = true });
         await view.Chart!.RefreshAsync();
@@ -122,7 +122,7 @@ public sealed class ChartViewTests : IDisposable
         var settings = new ChartSettings { ShowChart = true, LineWidth = 3 };
         settings.SetLineColor("usage", "#FF0000");
         settings.SetLineWidth("idle", 6);
-        var series = new InfluxDbSeries("cpu", new List<string> { "time", "usage", "idle" }, new Dictionary<string, string>(),
+        var series = new ResultSeries("cpu", new List<string> { "time", "usage", "idle" }, new Dictionary<string, string>(),
             Enumerable.Range(0, 10).Select(i => (IList<object>)new List<object> { T(i), (double)i, 10.0 - i }).ToList());
         var (view, host) = Show(series, settings);
         await view.Chart!.RefreshAsync();

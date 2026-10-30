@@ -27,7 +27,7 @@ public sealed class MapViewTests : IDisposable
         if (Directory.Exists(dir)) Directory.Delete(dir, true);
     }
 
-    private static InfluxDbSeries Track() =>
+    private static ResultSeries Track() =>
         new("gps", new List<string> { "time", "latitude", "longitude", "state" }, new Dictionary<string, string>(),
             Enumerable.Range(0, 40).Select(i => (IList<object>)new List<object>
             {

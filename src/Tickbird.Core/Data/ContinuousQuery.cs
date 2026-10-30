@@ -5,7 +5,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// An InfluxDB continuous query.
     /// </summary>
-    public class InfluxDbContinuousQuery
+    public class ContinuousQuery
     {
         #region Fields
 
@@ -27,7 +27,7 @@ namespace Tickbird.Core.Data
 
         #region Constructors
 
-        public InfluxDbContinuousQuery(string name, string query)
+        public ContinuousQuery(string name, string query)
         {
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentNullException("name");
             if (string.IsNullOrWhiteSpace(query)) throw new ArgumentNullException("query");
