@@ -494,6 +494,25 @@ public partial class MainWindow
 
     private void OnWindowKeyDownTunnel(object? s, KeyEventArgs e)
     {
+        // Visual Studio style tab switching. Ctrl+Tab opens the switcher (most recently used first); Ctrl+PageUp/Down move
+        // straight to the neighbouring tab.
+        if (e.Key == Key.Tab && (e.KeyModifiers == KeyModifiers.Control || e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift)))
+        {
+            e.Handled = true;
+            StepTabSwitcher(e.KeyModifiers.HasFlag(KeyModifiers.Shift));
+            return;
+        }
+        if (e.Key is Key.PageDown or Key.PageUp && e.KeyModifiers == KeyModifiers.Control)
+        {
+            e.Handled = true;
+            var tabs = Vm.Tabs;
+            if (tabs.Count > 1)
+            {
+                var index = Vm.SelectedTab == null ? 0 : tabs.IndexOf(Vm.SelectedTab);
+                Vm.SelectedTab = tabs[(index + (e.Key == Key.PageUp ? -1 : 1) + tabs.Count) % tabs.Count];
+            }
+            return;
+        }
         // SQL Server Management Studio shortcuts: F5 and Ctrl+E run the query. F5 still refreshes when the
         // Object Explorer has the focus, and Ctrl+E still jumps to the tree filter outside a query editor.
         if (CurrentQueryView != null && e.KeyModifiers == KeyModifiers.None && e.Key == Key.F5

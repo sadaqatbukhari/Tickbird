@@ -124,8 +124,13 @@ public sealed class QueryView : RequestView
     public string EditorText
     {
         get => editor.Text;
-        set => editor.Text = value;
+        set { editor.Text = value; savedText = value; }
     }
+
+    private string savedText = "";
+
+    /// <summary>True when the editor text differs from what was last loaded, opened or saved.</summary>
+    public bool IsDirty => !string.Equals(editor.Text ?? "", savedText ?? "", StringComparison.Ordinal);
 
     /// <summary>Loads the whole database schema (shared cache); set by the main window.</summary>
     public Func<Task<IReadOnlyList<InfluxDbMeasurementSchema>>>? SchemaLoader { get; set; }
@@ -326,19 +331,25 @@ public sealed class QueryView : RequestView
     public async Task OpenQueryAsync()
     {
         var path = await FilePicker.OpenAsync(this, "SQL files", "*.sql", "*.influxql", "*.txt");
-        if (path != null) editor.Text = await File.ReadAllTextAsync(path);
+        if (path == null) return;
+        editor.Text = await File.ReadAllTextAsync(path);
+        savedText = editor.Text;
     }
 
-    public async Task SaveQueryAsync()
+    /// <summary>Saves the query to a file. Returns false when nothing was saved (empty query or cancelled).</summary>
+    public async Task<bool> SaveQueryAsync()
     {
         if (string.IsNullOrWhiteSpace(editor.Text))
         {
             if (OwnerWindow != null) await Dialogs.ShowMessageAsync(OwnerWindow, "Save Query", "Enter a query before saving.");
-            return;
+            return false;
         }
         var connection = Client?.Connection.Name ?? "InfluxDB";
         var path = await FilePicker.SaveAsync(this, ResultExporter.SafeFileName($"{connection}_{Database}_query.sql"), "SQL files", "*.sql");
-        if (path != null) await File.WriteAllTextAsync(path, editor.Text);
+        if (path == null) return false;
+        await File.WriteAllTextAsync(path, editor.Text);
+        savedText = editor.Text;
+        return true;
     }
 
     public void CommentSelectedLines() => ReplaceSelectedOrCurrentLines(QueryText.Comment);

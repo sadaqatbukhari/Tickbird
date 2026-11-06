@@ -115,6 +115,40 @@ public static class Dialogs
         return await window.ShowDialog<bool>(owner) ? boxes.ToDictionary(p => p.Key, p => p.Value.Text ?? "") : null;
     }
 
+    public enum SaveChoice { Save, DontSave, Cancel }
+
+    /// <summary>Asks what to do with unsaved changes: Save, Don't Save or Cancel.</summary>
+    public static async Task<SaveChoice> AskSaveChangesAsync(Window owner, string message)
+    {
+        var window = new Window
+        {
+            Title = "Unsaved Changes", Width = 440, SizeToContent = SizeToContent.Height, CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        var choice = SaveChoice.Cancel;
+        Button Make(string text, SaveChoice c, bool def = false, bool cancel = false)
+        {
+            var b = new Button { Content = text, MinWidth = 90, IsDefault = def, IsCancel = cancel };
+            b.Click += (_, _) => { choice = c; window.Close(); };
+            return b;
+        }
+        window.Content = TickbirdTheme.Card(new StackPanel
+        {
+            Margin = new Thickness(4), Spacing = 16,
+            Children =
+            {
+                new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8,
+                    Children = { Make("Save", SaveChoice.Save, def: true), Make("Don't Save", SaveChoice.DontSave), Make("Cancel", SaveChoice.Cancel, cancel: true) }
+                }
+            }
+        });
+        await window.ShowDialog(owner);
+        return choice;
+    }
+
     /// <summary>The window behind <see cref="ConfirmWithOptionAsync"/>.</summary>
     public sealed class OptionConfirmWindow : Window
     {

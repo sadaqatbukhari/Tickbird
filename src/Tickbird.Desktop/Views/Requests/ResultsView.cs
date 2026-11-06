@@ -24,7 +24,9 @@ public sealed class ResultsView : UserControl
         private readonly InfluxDbSeries series;
         private readonly ResultFormatter formatter;
         private readonly int number;
-        public ResultRow(int index, int number, InfluxDbSeries series, ResultFormatter formatter) { Index = index; this.number = number; this.series = series; this.formatter = formatter; }
+        private readonly ISet<string> timeColumns;
+        public ResultRow(int index, int number, InfluxDbSeries series, ResultFormatter formatter, ISet<string> timeColumns)
+        { Index = index; this.number = number; this.series = series; this.formatter = formatter; this.timeColumns = timeColumns; }
         /// <summary>Row in the shown (filtered) result.</summary>
         public int Index { get; }
 
@@ -36,12 +38,14 @@ public sealed class ResultsView : UserControl
                 if (column == 0) return number.ToString(CultureInfo.CurrentCulture);
                 var c = column - 1;
                 var row = series.Values[Index];
-                return c < series.Columns.Count && c < row.Count ? formatter.Format(series.Columns[c], row[c]) : null;
+                return c < series.Columns.Count && c < row.Count ? formatter.Format(series.Columns[c], row[c], null, timeColumns.Contains(series.Columns[c])) : null;
             }
         }
     }
 
     private readonly DataGrid grid = GridFactory.Create();
+    /// <summary>Columns the user chose to show as date/time (epoch values), by name.</summary>
+    private readonly HashSet<string> timeColumns = new(StringComparer.OrdinalIgnoreCase);
     private readonly TextBlock tags = new()
     {
         Margin = new Thickness(10, 0), IsVisible = false, TextTrimming = TextTrimming.CharacterEllipsis,
@@ -95,6 +99,7 @@ public sealed class ResultsView : UserControl
                 Item("Exclude This Value", () => FilterByCell(MapConditionOperator.NotEquals)),
                 Item("Clear Filter", ClearFilter),
                 new Separator(),
+                Item("Show Column as Date/Time (toggle)", ToggleTimeColumn),
                 Item("Auto-size Columns", AutoSizeColumns),
                 Item("Export All to CSV…", () => Export(false, true)),
                 Item("Export All to JSON…", () => Export(false, false)),
@@ -337,7 +342,7 @@ public sealed class ResultsView : UserControl
     private const double MaxFitWidth = 480;
 
     /// <summary>Width that fits the header and the first rows' text (drag a header edge to change it).</summary>
-    public static double FitWidth(InfluxDbSeries result, int column, ResultFormatter formatter)
+    public static double FitWidth(InfluxDbSeries result, int column, ResultFormatter formatter, bool asTime = false)
     {
         // Measured from character counts: fast for big results, and close enough for 13 px Segoe UI.
         const double charWidth = 7.4, headerCharWidth = 7.8, padding = 30;
@@ -345,7 +350,7 @@ public sealed class ResultsView : UserControl
         foreach (var row in result.Values.Take(300))
         {
             if (column >= row.Count) continue;
-            var text = formatter.Format(result.Columns[column], row[column]);
+            var text = formatter.Format(result.Columns[column], row[column], null, asTime);
             if (text != null) widest = Math.Max(widest, text.Length * charWidth + padding);
         }
         return Math.Clamp(Math.Ceiling(widest), 64, MaxFitWidth);
@@ -360,7 +365,19 @@ public sealed class ResultsView : UserControl
         var formatter = TickbirdApp.Current.Formatter;
         grid.Columns[0].Width = new DataGridLength(RowNumberWidth(last.Values.Count));
         for (var i = 0; i < last.Columns.Count && i + 1 < grid.Columns.Count; i++)
-            grid.Columns[i + 1].Width = new DataGridLength(FitWidth(shown ?? last, i, formatter));
+            grid.Columns[i + 1].Width = new DataGridLength(FitWidth(shown ?? last, i, formatter, timeColumns.Contains(last.Columns[i])));
+    }
+
+    /// <summary>Right-click › Show Column as Date/Time: toggles epoch-to-datetime display for the current column.</summary>
+    private void ToggleTimeColumn()
+    {
+        if (last == null || grid.CurrentColumn == null) return;
+        var column = grid.Columns.IndexOf(grid.CurrentColumn) - 1;     // column 0 is the row number
+        if (column < 0 || column >= last.Columns.Count) return;
+        var name = last.Columns[column];
+        if (!timeColumns.Remove(name)) timeColumns.Add(name);
+        ApplyFilter();
+        grid.Columns[column + 1].Width = new DataGridLength(FitWidth(shown ?? last, column, TickbirdApp.Current.Formatter, timeColumns.Contains(name)));
     }
 
     /// <summary>The results grid (exposed for tests).</summary>
@@ -428,7 +445,7 @@ public sealed class ResultsView : UserControl
 
         var result = shown;
         var numbers = shownNumbers;
-        grid.ItemsSource = Enumerable.Range(0, result.Values.Count).Select(i => new ResultRow(i, numbers[i], result, formatter)).ToList();
+        grid.ItemsSource = Enumerable.Range(0, result.Values.Count).Select(i => new ResultRow(i, numbers[i], result, formatter, timeColumns)).ToList();
         chart?.SetResults(result, shownAll);
         map?.SetResults(result, shownAll);
 

@@ -19,7 +19,7 @@ namespace Tickbird.Desktop.Views;
 
 public partial class MainWindow : Window
 {
-    private sealed record ToolItem(string Icon, string Tip, Func<Task> Action, Func<CommandAvailability, bool> Enabled, string? Text = null);
+    private sealed record ToolItem(string Icon, string Tip, Func<Task> Action, Func<CommandAvailability, bool> Enabled, string? Text = null, string? Label = null);
 
     private readonly TickbirdApp app;
     private readonly List<(Control Control, Func<CommandAvailability, bool> Enabled)> commandControls = new();
@@ -41,6 +41,8 @@ public partial class MainWindow : Window
             if (e.PropertyName is nameof(MainWindowViewModel.Commands) or nameof(MainWindowViewModel.SelectedTab)) ApplyCommandState();
         };
         BuildToolBar();
+        Closing += OnMainWindowClosingConfirm;
+        InitTabSwitcher();
         BuildMenuState();
         BuildTreeContextMenu();
         ApplySettings();
@@ -144,11 +146,11 @@ public partial class MainWindow : Window
             new("ShowQueries", "Show Queries", ShowQueries, c => c.ShowQueries),
             null,
             new("Refresh", "Refresh", () => Do(RefreshNode), c => c.Refresh),
-            new("NewQuery", "New Query", () => Do(NewQuery), c => c.NewQuery),
+            new("NewQuery", "New Query", () => Do(NewQuery), c => c.NewQuery, null, "New Query"),
             new("RunQuery", "Run Query", RunCurrent, c => c.RunQuery),
             new("StopQuery", "Stop Query", () => { CurrentQueryView?.CancelQuery(); return Task.CompletedTask; }, _ => CurrentQueryView?.IsRunning == true),
-            new("", "Comment Selected Lines", () => { CurrentQueryView?.CommentSelectedLines(); return Task.CompletedTask; }, c => c.CommentQuery, "--"),
-            new("", "Uncomment Selected Lines", () => { CurrentQueryView?.UncommentSelectedLines(); return Task.CompletedTask; }, c => c.CommentQuery, "↶"),
+            new("Comment", "Comment Selected Lines", () => { CurrentQueryView?.CommentSelectedLines(); return Task.CompletedTask; }, c => c.CommentQuery),
+            new("Uncomment", "Uncomment Selected Lines", () => { CurrentQueryView?.UncommentSelectedLines(); return Task.CompletedTask; }, c => c.CommentQuery),
             null,
             new("CreateDatabase", "Create Database", () => Do(CreateDatabase), c => c.CreateDatabase),
             new("ContinuousQuery", "Show Continuous Queries", () => Do(ShowContinuousQueries), c => c.ContinuousQueries),
@@ -171,10 +173,21 @@ public partial class MainWindow : Window
                 continue;
             }
             var content = item.Text != null
-                ? (object)new TextBlock { Text = item.Text, FontWeight = Avalonia.Media.FontWeight.Bold, FontSize = 14, Foreground = Avalonia.Media.Brush.Parse("#1a65a7"), Width = 20, TextAlignment = Avalonia.Media.TextAlignment.Center }
+                ? (Control)new TextBlock { Text = item.Text, FontWeight = Avalonia.Media.FontWeight.Bold, FontSize = 14, Foreground = Avalonia.Media.Brush.Parse("#1a65a7"), Width = 20, TextAlignment = Avalonia.Media.TextAlignment.Center }
                 : new Image { Source = ShellIcons.Get(item.Icon), Width = 18, Height = 18 };
-            var button = new Button { Content = content };
+            var button = new Button();
             button.Classes.Add("shellTool");
+            if (item.Label != null)
+            {
+                button.Width = double.NaN;
+                button.Padding = new Thickness(6, 0);
+                button.Content = new StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 4,
+                    Children = { content, new TextBlock { Text = item.Label, VerticalAlignment = VerticalAlignment.Center, Foreground = Avalonia.Media.Brush.Parse("#1a1a1a") } }
+                };
+            }
+            else button.Content = content;
             ToolTip.SetTip(button, item.Tip);
             var action = item.Action;
             button.Click += async (_, _) => await Run(action);
@@ -875,15 +888,43 @@ public partial class MainWindow : Window
         if (Vm.SelectedTab?.Content is RequestView view) await view.ExecuteAsync();
     }
 
-    private void OnCloseTab(object? sender, RoutedEventArgs e)
+    /// <summary>Asks about each tab with unsaved query edits. Returns false when the user cancels.</summary>
+    private async Task<bool> ConfirmDiscardAsync(IEnumerable<TabViewModel> tabs)
     {
-        if ((sender as Control)?.DataContext is TabViewModel tab) Vm.CloseTab(tab);
+        foreach (var tab in tabs.ToList())
+        {
+            if (tab.Content is not QueryView { IsDirty: true } query) continue;
+            Vm.SelectedTab = tab;
+            var choice = await Dialogs.AskSaveChangesAsync(this, $"The query in \"{tab.Title}\" has unsaved changes. Do you want to save it?");
+            if (choice == Dialogs.SaveChoice.Cancel) return false;
+            if (choice == Dialogs.SaveChoice.Save && !await query.SaveQueryAsync()) return false;
+        }
+        return true;
     }
 
-    private void OnCloseAllButThis(object? sender, RoutedEventArgs e)
+    private async void OnCloseTab(object? sender, RoutedEventArgs e)
     {
-        if ((sender as Control)?.DataContext is TabViewModel tab) Vm.CloseAllBut(tab);
+        if ((sender as Control)?.DataContext is not TabViewModel tab) return;
+        if (await ConfirmDiscardAsync(new[] { tab })) Vm.CloseTab(tab);
     }
 
-    private void OnCloseAll(object? sender, RoutedEventArgs e) => Vm.CloseAll();
+    private async void OnCloseAllButThis(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is not TabViewModel keep) return;
+        if (await ConfirmDiscardAsync(Vm.Tabs.Where(t => t != keep))) Vm.CloseAllBut(keep);
+    }
+
+    private async void OnCloseAll(object? sender, RoutedEventArgs e)
+    {
+        if (await ConfirmDiscardAsync(Vm.Tabs)) Vm.CloseAll();
+    }
+
+    private bool closeConfirmed;
+
+    private async void OnMainWindowClosingConfirm(object? sender, WindowClosingEventArgs e)
+    {
+        if (closeConfirmed || !Vm.Tabs.Any(t => t.Content is QueryView { IsDirty: true })) return;
+        e.Cancel = true;
+        if (await ConfirmDiscardAsync(Vm.Tabs)) { closeConfirmed = true; Close(); }
+    }
 }
