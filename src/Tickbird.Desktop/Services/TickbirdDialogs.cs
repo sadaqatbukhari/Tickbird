@@ -351,6 +351,17 @@ public static class TickbirdDialogs
         });
         panel.Children.Add(new TextBlock { Text = "Version " + version, Margin = new Thickness(0, 6, 0, 0) });
         panel.Children.Add(new TextBlock { Text = "Released under the MIT License. Runs on Windows, macOS and Linux.", Opacity = 0.85, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+        // The warranty and liability notice (Tickbird.Core.Legal), in smaller type under the licence line.
+        panel.Children.Add(new TextBlock
+        {
+            Name = "AboutWarranty", Text = Tickbird.Core.Legal.Warranty, FontSize = 11, Opacity = 0.75,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0)
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Name = "AboutLiability", Text = Tickbird.Core.Legal.Liability, FontSize = 11, Opacity = 0.75,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap
+        });
         if (!string.IsNullOrEmpty(updateMessage)) panel.Children.Add(new TextBlock { Text = updateMessage, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
         if (!string.IsNullOrEmpty(releaseUrl))
         {

@@ -187,3 +187,9 @@ for all databases. It is only a convenience: a free-text column such as a messag
 | Create Database says the extension could not be installed | Create the database anyway and ask an administrator to install `timescaledb` in it. |
 | Test connection fails with a timeout | Check host and port. A local PostgreSQL may already own port 5432; map the container to another port (`-p 5433:5432`). |
 | SSL error | Turn **Use SSL** off for a local server, or allow untrusted certificates in Settings for a self-signed one. |
+
+## Disclaimer
+
+The program is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+
+The provider of this tool is not responsible or liable for any loss of data, or any other loss or damage, arising from its use. Back up your data before running commands that change or delete it.

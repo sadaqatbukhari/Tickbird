@@ -199,3 +199,9 @@ objects) as a field, so the same views work for all databases. It is a convenien
 | Just-written rows are not found | Wait a second or run `REFRESH TABLE <table>`. |
 | Show Queries is empty | No other jobs are running. The listing hides its own query. |
 | A user has rights but the list is empty | The rights are on a schema or table, not the cluster. See the note under Users and Privileges. |
+
+## Disclaimer
+
+The program is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+
+The provider of this tool is not responsible or liable for any loss of data, or any other loss or damage, arising from its use. Back up your data before running commands that change or delete it.

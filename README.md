@@ -1,6 +1,8 @@
 <p align="center"><img src="src/Tickbird.Desktop/Assets/BrandLogo.png" alt="Tickbird" height="72"></p>
 
 # Tickbird
+> **Disclaimer.** The program is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. The provider of this tool is not responsible or liable for any loss of data, or any other loss or damage, arising from its use. Back up your data before running commands that change or delete it. See [Disclaimer](#disclaimer).
+
 **Tickbird is a cross-platform desktop client for exploring and managing time series databases. It currently supports [InfluxDB](https://www.influxdata.com/time-series-platform/influxdb/) (1.x and 3.x), [TimescaleDB](https://www.timescale.com/) and [CrateDB](https://cratedb.com/), and is built so that more databases (such as QuestDB) can be added.**
 
 Its inspiration comes from other similar database management tools such as [SQL Server Management Studio](https://en.wikipedia.org/wiki/SQL_Server_Management_Studio)
@@ -98,6 +100,7 @@ The following are planned features that are not yet implemented in the current v
    - [Settings Overview](#settings-overview)
    - [Exporting Settings](#exporting-settings)
    - [Importing Settings](#importing-settings)
+ - [Disclaimer](#disclaimer)
  - [License](#license)
    
 ## Installation
@@ -588,7 +591,7 @@ _Confirm that you would like to drop series for the selected measurement (**this
 
 ## Confirming Destructive Actions
 
-Dropping a **database**, **measurement** or **series** cannot be undone, so the confirmation dialog asks you to type the object's name before the red **Drop** button turns on. The match is exact and case-sensitive (like InfluxDB names), and `Enter` confirms once the name matches. **Cancel** or `Esc` leaves the data untouched.
+Dropping a **database**, **measurement** or **series** cannot be undone (see the [Disclaimer](#disclaimer)), so the confirmation dialog asks you to type the object's name before the red **Drop** button turns on. The match is exact and case-sensitive (like InfluxDB names), and `Enter` confirms once the name matches. **Cancel** or `Esc` leaves the data untouched.
 
 ## Working with Users and Privileges
 
@@ -703,6 +706,14 @@ To export application settings, including all configured InfluxDB server connect
 ### Importing Settings
 
 To import application settings, including all configured InfluxDB server connections, select **File → Import → Settings** from the **application menu** and browse to and select the exported settings file you would like to import then click **Open**.
+
+## Disclaimer
+
+The program is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+
+The provider of this tool is not responsible or liable for any loss of data, or any other loss or damage, arising from its use. Back up your data before running commands that change or delete it.
+
+The same notice is shown in **Help** → **About**.
 
 ## License
 
