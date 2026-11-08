@@ -334,11 +334,11 @@ public class CrateDbClientTests
     [Fact]
     public async Task Diagnostics_ShowTheNodeAndTheCluster()
     {
-        var started = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
-        var now = started.AddDays(2).AddHours(3).AddMinutes(4).AddSeconds(5);
+        var now = new DateTime(2026, 10, 3, 3, 4, 5, DateTimeKind.Utc);
+        var hostUptime = (long)(TimeSpan.FromDays(2) + TimeSpan.FromHours(3) + TimeSpan.FromMinutes(4) + TimeSpan.FromSeconds(5)).TotalMilliseconds;
         var (client, _) = Create(r => r
-            .Answer("os_info", new[] { "name", "hostname", "version", "build_hash", "started", "current_time", "processors", "heap_max" },
-                new object[] { "node-1", "crate-a", "5.9.2", "abc123", started, now, 8L, 1073741824L })
+            .Answer("os_info", new[] { "name", "hostname", "version", "build_hash", "host_uptime", "current_time", "processors", "heap_max" },
+                new object[] { "node-1", "crate-a", "5.9.2", "abc123", hostUptime, now, 8L, 1073741824L })
             .Answer("master_node", new[] { "name", "master_node" }, new object[] { "prod", "node-1" })
             .Answer("count(*) FROM sys.nodes", new[] { "n" }, new object[] { 3L })
             .Answer("current_user", new[] { "u" }, new object[] { "crate" }));
@@ -348,7 +348,8 @@ public class CrateDbClientTests
         Assert.Equal("5.9.2", diagnostics.BuildVersion);
         Assert.Equal("localhost", diagnostics.Hostname);
         Assert.Equal(TimeSpan.FromDays(2) + TimeSpan.FromHours(3) + TimeSpan.FromMinutes(4) + TimeSpan.FromSeconds(5), diagnostics.Uptime);
-        Assert.Equal("2d 3h 4m 5s", facts["Uptime"]);
+        Assert.Equal("2d 3h 4m 5s", facts["Host uptime"]);
+        Assert.DoesNotContain("Started", facts.Keys);          // CrateDB does not say when a node started
         Assert.Equal("node-1", facts["Node"]);
         Assert.Equal("crate-a", facts["Host name"]);
         Assert.Equal("prod", facts["Cluster"]);
@@ -365,7 +366,7 @@ public class CrateDbClientTests
         Assert.Null(await empty.GetDiagnosticsAsync());
 
         var (client, _) = Create(r => r.Answer("os_info", new[] { "name", "hostname", "version", "build_hash", "started", "current_time", "processors", "heap_max" },
-            new object[] { "n", "h", "5.9.2", "x", DateTimeOffset.FromUnixTimeMilliseconds(1_700_000_000_000).UtcDateTime, DateTime.UtcNow, 2L, 3L }));
+            new object[] { "n", "h", "5.9.2", "x", 1_000L, DateTime.UtcNow, 2L, 3L }));
         var diagnostics = await client.GetDiagnosticsAsync();
         Assert.DoesNotContain(diagnostics.Properties, p => p.Key == "Cluster");     // the other queries returned nothing
     }
@@ -375,7 +376,7 @@ public class CrateDbClientTests
     {
         // The first query works; everything after it is refused.
         var runner = new FakeSqlRunner().Answer("os_info", new[] { "name", "hostname", "version", "build_hash", "started", "current_time", "processors", "heap_max" },
-            new object[] { "n", "h", "5.9.2", "x", DateTime.UtcNow.AddHours(-1), DateTime.UtcNow, 2L, 3L });
+            new object[] { "n", "h", "5.9.2", "x", 3_600_000L, DateTime.UtcNow, 2L, 3L });
         var client = new CrateDbClient(new DatabaseConnection("1", "c", "h", 5432, "u", "") { Kind = DatabaseKind.CrateDb }, new RefusingAfterFirst(runner));
         var diagnostics = await client.GetDiagnosticsAsync();
         Assert.Equal("n", diagnostics.Properties.Single(p => p.Key == "Node").Value);

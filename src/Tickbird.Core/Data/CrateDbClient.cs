@@ -185,7 +185,7 @@ public sealed class CrateDbClient : PostgresClientBase
     }
 
     public const string NodeSql =
-        "SELECT name, hostname, version['number'] AS version, version['build_hash'] AS build_hash, started, current_timestamp AS current_time, " +
+        "SELECT name, hostname, version['number'] AS version, version['build_hash'] AS build_hash, os['uptime'] AS host_uptime, current_timestamp AS current_time, " +
         "os_info['available_processors'] AS processors, heap['max'] AS heap_max FROM sys.nodes ORDER BY name LIMIT 1";
 
     public const string ClusterSql = "SELECT name, master_node FROM sys.cluster";
@@ -206,15 +206,14 @@ public sealed class CrateDbClient : PostgresClientBase
     {
         var node = Rows(await Sql.QueryAsync(null, NodeSql).ConfigureAwait(false)).FirstOrDefault();
         if (node == null) return null;
-        var started = ToUtc(node[4]);
+        // CrateDB does not report when a node started, only how long the host it runs on has been up.
         var now = node[5] is { } n ? ToUtc(n) : DateTime.UtcNow;
-        var uptime = started == DateTime.MinValue ? TimeSpan.Zero : now - started;
+        var hostUptime = node[4] is null ? TimeSpan.Zero : TimeSpan.FromMilliseconds(Convert.ToDouble(node[4], CultureInfo.InvariantCulture));
         var properties = new List<KeyValuePair<string, string>>
         {
             new("Node", Text(node, 0)), new("Host name", Text(node, 1)), new("Version", Text(node, 2)), new("Build", Text(node, 3)),
-            new("Started", started.ToString("u", CultureInfo.InvariantCulture)),
             new("Current time", now.ToString("u", CultureInfo.InvariantCulture)),
-            new("Uptime", $"{uptime.Days}d {uptime.Hours}h {uptime.Minutes}m {uptime.Seconds}s"),
+            new("Host uptime", $"{hostUptime.Days}d {hostUptime.Hours}h {hostUptime.Minutes}m {hostUptime.Seconds}s"),
             new("Processors", Text(node, 6)), new("Maximum heap", Text(node, 7)),
         };
         await AddAsync(properties, "Cluster", ClusterSql, r => Text(r, 0)).ConfigureAwait(false);
@@ -223,7 +222,7 @@ public sealed class CrateDbClient : PostgresClientBase
         await AddAsync(properties, "User", CurrentUserSql, r => Text(r, 0)).ConfigureAwait(false);
         return new ServerDiagnostics
         {
-            Hostname = Connection.Host, BuildVersion = Text(node, 2), Started = started, CurrentTime = now, Uptime = uptime, PID = 0,
+            Hostname = Connection.Host, BuildVersion = Text(node, 2), Started = DateTime.MinValue, CurrentTime = now, Uptime = hostUptime, PID = 0,
             Properties = properties
         };
     }
