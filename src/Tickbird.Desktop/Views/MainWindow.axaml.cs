@@ -176,7 +176,7 @@ public partial class MainWindow : Window
             var content = item.Text != null
                 ? (Control)new TextBlock { Text = item.Text, FontWeight = Avalonia.Media.FontWeight.Bold, FontSize = 14, Foreground = Avalonia.Media.Brush.Parse("#1a65a7"), Width = 20, TextAlignment = Avalonia.Media.TextAlignment.Center }
                 : new Image { Source = ShellIcons.Get(item.Icon), Width = 18, Height = 18 };
-            var button = new Button { Content = content, Tag = item.Icon };
+            var button = new Button { Tag = item.Icon };
             button.Classes.Add("shellTool");
             if (item.Label != null)
             {
