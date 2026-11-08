@@ -86,6 +86,8 @@ public class PostgresSqlTests
     [InlineData("2.5h", "2.5 hours")]
     [InlineData("30 days", "30 days")]
     [InlineData("1 mon", "1 mon")]
+    [InlineData("500ns", "1 microseconds")]
+    [InlineData("1500ns", "2 microseconds")]
     public void Durations_BecomeIntervals(string input, string expected) => Assert.Equal(expected, PostgresSql.Interval(input));
 
     [Theory]
@@ -102,6 +104,7 @@ public class PostgresSqlTests
     [InlineData("text", true)]
     [InlineData("character varying(32)", true)]
     [InlineData("uuid", true)]
+    [InlineData("USER-DEFINED", false)]
     [InlineData("double precision", false)]
     [InlineData("integer", false)]
     [InlineData("boolean", false)]
@@ -437,13 +440,28 @@ public class TimescaleDbClientTests
         Assert.Equal("role \"a\" already exists", result.Body);
     }
 
+    [Fact]
+    public async Task ALostConnection_IsAFailedResult_NotAnException()
+    {
+        var client = new TimescaleDbClient(new DatabaseConnection("1", "x", "h", 5432, "u", "p") { Kind = Tickbird.Core.Providers.DatabaseKind.TimescaleDb },
+            new ThrowingRunner(new Npgsql.NpgsqlException("Exception while reading from stream", new TimeoutException("timed out"))));
+        var result = await client.DropUserAsync("a");
+        Assert.False(result.Success);
+        Assert.Equal("timed out", result.Body);
+    }
+
     private sealed class ThrowingRunner : ISqlRunner
     {
+        private readonly Exception error;
+
+        public ThrowingRunner(Exception? error = null) =>
+            this.error = error ?? new Npgsql.PostgresException("role \"a\" already exists", "ERROR", "ERROR", "42710");
+
         public Task<IReadOnlyList<ResultSeries>> QueryAsync(string? database, string sql, IReadOnlyDictionary<string, object?>? parameters = null, CancellationToken cancellationToken = default) =>
-            throw new Npgsql.PostgresException("role \"a\" already exists", "ERROR", "ERROR", "42710");
+            throw error;
 
         public Task<int> ExecuteAsync(string? database, string sql, IReadOnlyDictionary<string, object?>? parameters = null, CancellationToken cancellationToken = default) =>
-            throw new Npgsql.PostgresException("role \"a\" already exists", "ERROR", "ERROR", "42710");
+            throw error;
     }
 
     [Fact]
@@ -513,8 +531,8 @@ public class TimescaleDbClientTests
         var (sql, parameters) = client.BuildInsert("metrics.cpu", new Dictionary<string, object> { ["host"] = "web-1" },
             new Dictionary<string, object> { ["usage"] = 41.5 }, time);
         Assert.Equal("INSERT INTO \"metrics\".\"cpu\" (\"time\", \"host\", \"usage\") VALUES (@p0_0, @p0_1, @p0_2)", sql);
-        Assert.Equal(time, parameters["p0_0"]);
-        Assert.Equal("web-1", parameters["p0_1"]);
+        Assert.Equal(new UntypedText("2026-10-21T07:00:00Z"), parameters["p0_0"]);
+        Assert.Equal(new UntypedText("web-1"), parameters["p0_1"]);
         Assert.Equal(41.5, parameters["p0_2"]);
     }
 

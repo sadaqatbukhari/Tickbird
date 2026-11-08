@@ -68,6 +68,7 @@ public abstract class PostgresClientBase : DatabaseClient
             return Ok();
         }
         catch (PostgresException ex) { return Failed(ex.MessageText); }
+        catch (NpgsqlException ex) { return Failed(ex.InnerException?.Message ?? ex.Message); }   // connection lost, timeout...
     }
 
     protected static string Text(IList<object> row, int index) =>
@@ -231,18 +232,32 @@ public abstract class PostgresClientBase : DatabaseClient
 
     // ------------------------------------------------------------------ writing
 
+    /// <summary>
+    /// Text and times are sent untyped, so a value written as text still fits a numeric or time column; numbers and
+    /// booleans keep their own types.
+    /// </summary>
+    private static object? AsParameter(object? value) => value switch
+    {
+        string text => new UntypedText(text),
+        DateTime time => new UntypedText(DateTime.SpecifyKind(time, time.Kind == DateTimeKind.Unspecified ? DateTimeKind.Utc : time.Kind)
+            .ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'", CultureInfo.InvariantCulture)),
+        DateTimeOffset time => new UntypedText(time.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'", CultureInfo.InvariantCulture)),
+        _ => value
+    };
+
     /// <summary>The INSERT for one point: the time column, the tag columns, then the field columns, all as parameters.</summary>
     public (string Sql, Dictionary<string, object?> Parameters) BuildInsert(string measurement,
         IDictionary<string, object>? tags, IDictionary<string, object>? fields, DateTime timeStamp, int index = 0)
     {
         var columns = new List<string> { PostgresSql.Identifier(TimeColumn) };
-        var parameters = new Dictionary<string, object?> { [$"p{index}_0"] = DateTime.SpecifyKind(timeStamp, DateTimeKind.Utc) };
+        // Sent untyped (an ISO time with Z) so the server reads it as timestamptz or timestamp, whichever the column is.
+        var parameters = new Dictionary<string, object?> { [$"p{index}_0"] = AsParameter(DateTime.SpecifyKind(timeStamp, DateTimeKind.Utc)) };
         var names = new List<string> { $"@p{index}_0" };
         var i = 1;
         foreach (var pair in (tags ?? new Dictionary<string, object>()).Concat(fields ?? new Dictionary<string, object>()))
         {
             columns.Add(PostgresSql.Identifier(pair.Key));
-            parameters[$"p{index}_{i}"] = pair.Value;
+            parameters[$"p{index}_{i}"] = AsParameter(pair.Value);
             names.Add($"@p{index}_{i}");
             i++;
         }

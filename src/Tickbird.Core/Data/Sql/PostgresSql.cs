@@ -95,7 +95,8 @@ public static class PostgresSql
             };
             if (unit == null)
             {
-                var micro = decimal.Parse(number, CultureInfo.InvariantCulture) / 1000m;
+                // PostgreSQL intervals have microsecond resolution, so nanoseconds are rounded to whole microseconds.
+                var micro = decimal.Round(decimal.Parse(number, CultureInfo.InvariantCulture) / 1000m, 0, MidpointRounding.AwayFromZero);
                 return micro.ToString(CultureInfo.InvariantCulture) + " microseconds";
             }
             return number + " " + unit;
@@ -116,8 +117,7 @@ public static class PostgresSql
                              || dataType.Equals("text", StringComparison.OrdinalIgnoreCase)
                              || dataType.Equals("name", StringComparison.OrdinalIgnoreCase)
                              || dataType.Equals("uuid", StringComparison.OrdinalIgnoreCase)
-                             || dataType.Equals("citext", StringComparison.OrdinalIgnoreCase)
-                             || dataType.Equals("USER-DEFINED", StringComparison.OrdinalIgnoreCase));
+                             || dataType.Equals("citext", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>True for a column type that holds a point in time.</summary>
     public static bool IsTimestampType(string? dataType) =>

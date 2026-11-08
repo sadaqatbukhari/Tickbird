@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace Tickbird.Core.Data.Sql;
 
@@ -102,7 +103,9 @@ public sealed class NpgsqlRunner : ISqlRunner, IDisposable
     {
         if (parameters == null) return;
         foreach (var (name, value) in parameters)
-            command.Parameters.Add(new NpgsqlParameter(name, value ?? DBNull.Value));
+            command.Parameters.Add(value is UntypedText untyped
+                ? new NpgsqlParameter(name, NpgsqlDbType.Unknown) { Value = untyped.Value }
+                : new NpgsqlParameter(name, value ?? DBNull.Value));
     }
 
     /// <summary>Cell values the grid, charts and exports understand: numbers, text, booleans and UTC dates; anything else as text.</summary>
