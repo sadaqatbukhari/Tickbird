@@ -39,12 +39,6 @@ public enum ResultMode
 /// </summary>
 public sealed class ChartSettings
 {
-    /// <summary>
-    /// Columns shown as dates because they hold Unix epoch numbers, with the unit chosen for each. Shared by the
-    /// query's result tabs and kept when the query is run again.
-    /// </summary>
-    public Dictionary<string, Tickbird.Core.Query.EpochUnit> EpochColumns { get; } = new(StringComparer.OrdinalIgnoreCase);
-
     private ResultMode mode;
     private ChartStyle style = ChartStyle.Line;
     private string? splitBy;

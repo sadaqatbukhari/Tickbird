@@ -2,6 +2,7 @@ using Tickbird.Core.Data;
 using Tickbird.Core.Completion;
 using Tickbird.Core.History;
 using Tickbird.Core.Query;
+using Tickbird.Core.Query;
 using Tickbird.Core.Settings;
 
 namespace Tickbird.Desktop.Services;
@@ -25,6 +26,10 @@ public sealed class TickbirdApp
     /// <summary>Queries run from the editor (query-history.json next to the settings file).</summary>
     public QueryHistory History => history ??= new QueryHistory(QueryHistory.PathNextTo(store.FilePath), retentionDays: Settings.QueryHistoryRetentionDays);
     private QueryHistory? history;
+
+    /// <summary>Saved query snippets (query-snippets.json next to the settings file).</summary>
+    public QuerySnippets Snippets => snippets ??= new QuerySnippets(QuerySnippets.PathNextTo(store.FilePath));
+    private QuerySnippets? snippets;
     public List<DatabaseClient> ActiveClients { get; } = new();
     public string SettingsFilePath => store.FilePath;
 

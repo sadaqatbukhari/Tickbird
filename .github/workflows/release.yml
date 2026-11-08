@@ -1,7 +1,7 @@
 name: Release
 
 # Pushing a tag such as v1.0.0 builds Tickbird for Windows, Linux and macOS and publishes a GitHub release.
-# The tag must match the version in Version.props.
+# The tag must match the version in Version.props and point at a commit on master.
 on:
   push:
     tags: ['v*']
@@ -15,6 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag is on master
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "Tag ${GITHUB_REF_NAME} is not on master. Merge the change into master and tag it there."; exit 1
+          fi
       - name: Tag matches Version.props
         if: startsWith(github.ref, 'refs/tags/v')
         run: |

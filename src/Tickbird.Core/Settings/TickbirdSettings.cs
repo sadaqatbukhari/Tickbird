@@ -75,6 +75,12 @@ public sealed class TickbirdSettings
     /// <summary>Record every query run from the editor in the query history.</summary>
     public bool KeepQueryHistory { get; set; } = true;
 
+    /// <summary>Show the Getting Started guide when Tickbird starts (Help › Getting Started opens it any time).</summary>
+    public bool ShowGettingStarted { get; set; } = true;
+
+    /// <summary>The order of the Query History columns, left to right, by header. Empty means the default order.</summary>
+    public List<string> QueryHistoryColumnOrder { get; set; } = new();
+
     /// <summary>Query history entries older than this many days are removed. 0 (the default) keeps them always.</summary>
     public int QueryHistoryRetentionDays { get; set; }
 

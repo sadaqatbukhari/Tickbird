@@ -12,19 +12,38 @@ public sealed class RunningQueriesView : ListRequestView
 {
     private readonly Button kill = ToolButton("Kill Query", "KillQuery", "Kill the selected query");
 
+    private const int QueryColumn = 4; // after the row number column
+    private readonly TextBox fullQuery = new()
+    {
+        IsReadOnly = true, AcceptsReturn = true, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Height = 150, FontSize = 12,
+        FontFamily = new Avalonia.Media.FontFamily("Cascadia Mono,Consolas,Menlo,monospace"),
+        Margin = new Avalonia.Thickness(0, 8, 0, 0), Watermark = "Select a query to see all of it here."
+    };
+
     public RunningQueriesView()
     {
         kill.IsEnabled = false;
         kill.Click += async (_, _) => await Guard(KillAsync);
         Header.Children.Add(kill);
-        Grid.SelectionChanged += (_, _) => kill.IsEnabled = Grid.SelectedItem != null;
+        // The grid cuts long queries short, so the selected one is shown in full under it.
+        Avalonia.Controls.DockPanel.SetDock(fullQuery, Avalonia.Controls.Dock.Bottom);
+        Layout.Children.Insert(Layout.Children.IndexOf(Grid), fullQuery);
+        Grid.SelectionChanged += (_, _) =>
+        {
+            kill.IsEnabled = Grid.SelectedItem != null;
+            fullQuery.Text = (Grid.SelectedItem as GridRow)?[QueryColumn] ?? "";
+        };
     }
 
     public override string ExportFileNameStem => "queries";
 
     protected override async Task<TableData> LoadAsync()
     {
-        var queries = (await Client.GetRunningQueriesAsync() ?? Enumerable.Empty<RunningQuery>()).ToList();
+        // Longest running first; a duration that cannot be read goes last. Equal durations keep the lowest PID first.
+        var queries = (await Client.GetRunningQueriesAsync() ?? Enumerable.Empty<RunningQuery>())
+            .OrderByDescending(q => Tickbird.Core.Query.DurationText.ToMilliseconds(q.Duration) ?? -1)
+            .ThenBy(q => q.PID)
+            .ToList();
         return new TableData(new[] { "PID", "Duration", "Database", "Query" },
             queries.Select(q => (IReadOnlyList<string?>)new[] { q.PID.ToString(), q.Duration, q.Database, q.Query }).ToList());
     }

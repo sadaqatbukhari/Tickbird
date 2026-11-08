@@ -58,11 +58,11 @@ public sealed class QueryView : RequestView
 
     public QueryView()
     {
-        Background = Brush.Parse("#F1F7FD");
+        Background = Brushes.White;
         results.Classes.Add("queryResultTabs");
         editor.Options.HighlightCurrentLine = true;
         editor.TextArea.SelectionBrush = Brush.Parse("#ADD6FF");
-        editor.TextArea.TextView.CurrentLineBackground = Brush.Parse("#F1F8FF");
+        editor.TextArea.TextView.CurrentLineBackground = Brushes.White;
         editor.TextArea.TextView.CurrentLineBorder = new Pen(Brushes.Transparent);
         editor.TextArea.TextView.LineTransformers.Add(new InfluxQlColorizer());
         // Tunnel so Ctrl+Space reaches us before the editor treats it as typing.
@@ -124,8 +124,13 @@ public sealed class QueryView : RequestView
     public string EditorText
     {
         get => editor.Text;
-        set => editor.Text = value;
+        set { editor.Text = value; savedText = value; }
     }
+
+    private string savedText = "";
+
+    /// <summary>True when the editor text differs from what was last loaded, opened or saved.</summary>
+    public bool IsDirty => !string.Equals(editor.Text ?? "", savedText ?? "", StringComparison.Ordinal);
 
     /// <summary>Loads the whole database schema (shared cache); set by the main window.</summary>
     public Func<Task<IReadOnlyList<MeasurementSchema>>>? SchemaLoader { get; set; }
@@ -159,6 +164,35 @@ public sealed class QueryView : RequestView
                            + $"{completion.TagCount} tags. Press Ctrl+Space for suggestions.";
     }
 
+    private static readonly Dictionary<string, string> lastParameterValues = new(StringComparer.Ordinal);
+
+    /// <summary>Saves the selection, or the whole editor text, as a named snippet.</summary>
+    public async Task SaveSnippetAsync()
+    {
+        var text = QueryText.TextToExecute(editor.SelectedText, editor.Text);
+        if (OwnerWindow == null) return;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            await Dialogs.ShowMessageAsync(OwnerWindow, "Save Snippet", "Select or enter a query to save.");
+            return;
+        }
+        var name = await Dialogs.PromptTextAsync(OwnerWindow, "Save Snippet",
+            "Name for this snippet. Saving under an existing name replaces that snippet. Use {{name}} in the query for values asked when it runs.", null, ok: "Save");
+        if (string.IsNullOrWhiteSpace(name)) return;
+        TickbirdApp.Current.Snippets.Save(name, text);
+        summary.Text = $"Snippet \"{name.Trim()}\" saved.";
+    }
+
+    /// <summary>Lets the user pick a snippet and puts it at the caret (replacing the selection).</summary>
+    public async Task InsertSnippetAsync()
+    {
+        if (OwnerWindow == null) return;
+        var text = await new SnippetsWindow(TickbirdApp.Current.Snippets).ShowDialog<string?>(OwnerWindow);
+        if (text == null) return;
+        editor.TextArea.Selection.ReplaceSelectionWithText(text);
+        editor.Focus();
+    }
+
     public override async Task ExecuteAsync()
     {
         if (Client == null) throw new InvalidOperationException("No InfluxDB client available.");
@@ -169,6 +203,15 @@ public sealed class QueryView : RequestView
             return;
         }
         if (IsRunning) return;
+        var parameters = QueryParameters.Find(query);
+        if (parameters.Count > 0)
+        {
+            if (OwnerWindow == null) return;
+            var values = await Dialogs.PromptParametersAsync(OwnerWindow, parameters, lastParameterValues);
+            if (values == null) return;
+            foreach (var pair in values) lastParameterValues[pair.Key] = pair.Value;
+            query = QueryParameters.Apply(query, values);
+        }
         var label = QueryText.IsAggregate(query) ? "Group" : "Results";
         var timeoutSeconds = TickbirdApp.Current.Settings.QueryTimeoutSeconds;
         using var cancel = new CancellationTokenSource();
@@ -288,19 +331,25 @@ public sealed class QueryView : RequestView
     public async Task OpenQueryAsync()
     {
         var path = await FilePicker.OpenAsync(this, "SQL files", "*.sql", "*.influxql", "*.txt");
-        if (path != null) editor.Text = await File.ReadAllTextAsync(path);
+        if (path == null) return;
+        editor.Text = await File.ReadAllTextAsync(path);
+        savedText = editor.Text;
     }
 
-    public async Task SaveQueryAsync()
+    /// <summary>Saves the query to a file. Returns false when nothing was saved (empty query or cancelled).</summary>
+    public async Task<bool> SaveQueryAsync()
     {
         if (string.IsNullOrWhiteSpace(editor.Text))
         {
             if (OwnerWindow != null) await Dialogs.ShowMessageAsync(OwnerWindow, "Save Query", "Enter a query before saving.");
-            return;
+            return false;
         }
         var connection = Client?.Connection.Name ?? "InfluxDB";
         var path = await FilePicker.SaveAsync(this, ResultExporter.SafeFileName($"{connection}_{Database}_query.sql"), "SQL files", "*.sql");
-        if (path != null) await File.WriteAllTextAsync(path, editor.Text);
+        if (path == null) return false;
+        await File.WriteAllTextAsync(path, editor.Text);
+        savedText = editor.Text;
+        return true;
     }
 
     public void CommentSelectedLines() => ReplaceSelectedOrCurrentLines(QueryText.Comment);

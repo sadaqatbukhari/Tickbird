@@ -50,6 +50,28 @@ public sealed class QueryHistoryFavoritesViewTests : IDisposable
         Assert.IsType<Dialogs.OptionConfirmWindow>(Assert.Single(host.OwnedWindows));
 
     [AvaloniaFact]
+    public void Columns_StartInTheRequestedOrder_AndAReorderedLayoutIsSavedAndRestored()
+    {
+        var (host, view, _, grid) = Create("SELECT 1");
+        Assert.Equal(new[] { "Run at", "Query", "Caption", "★", "Connection", "Database", "Status", "Duration", "Rows", "Tags" }, view.ColumnOrder);
+
+        // The user drags "Tags" to the front.
+        grid.Columns.First(c => (string?)c.Header == "Tags").DisplayIndex = 0;
+        Pump();
+        Assert.Equal("Tags", TickbirdApp.Current.Settings.QueryHistoryColumnOrder[0]);
+        host.Close();
+
+        // A new history tab (as after a restart) uses the saved order.
+        var again = new QueryHistoryView(new QueryHistory(null), _ => Task.CompletedTask);
+        var second = new Window { Content = again, Width = 1100, Height = 600 };
+        second.Show();
+        Pump();
+        Assert.Equal("Tags", again.ColumnOrder[0]);
+        Assert.Equal("Run at", again.ColumnOrder[1]);
+        second.Close();
+    }
+
+    [AvaloniaFact]
     public void FavoriteButton_MarksTheSelection_AndTheGridShowsAStar()
     {
         var (host, view, history, grid) = Create("SELECT 1", "SELECT 2");
@@ -60,7 +82,7 @@ public sealed class QueryHistoryFavoritesViewTests : IDisposable
 
         Assert.True(history.Entries.Single(e => e.Query == "SELECT 1").IsFavorite);
         var starred = grid.ItemsSource!.Cast<GridRow>().Single(r => ((QueryHistoryEntry)r.Tag!).Query == "SELECT 1");
-        Assert.Equal("★", starred[0]);
+        Assert.Equal("★", starred[3]);
 
         view.ToggleFavorite();    // toggling again removes the mark
         Assert.False(history.Entries.Single(e => e.Query == "SELECT 1").IsFavorite);

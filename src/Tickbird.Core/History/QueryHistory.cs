@@ -28,6 +28,12 @@ public sealed class QueryHistoryEntry
     /// <summary>A favorite is kept when entries expire, when the history is full and when the history is cleared (unless you ask).</summary>
     public bool IsFavorite { get; set; }
 
+    /// <summary>An optional title the user gave the query. It is searchable and survives running the query again.</summary>
+    public string? Caption { get; set; }
+
+    /// <summary>Labels the user gave the query, to group and find it.</summary>
+    public List<string> Tags { get; set; } = new();
+
     /// <summary>The query on one line, for lists.</summary>
     [JsonIgnore]
     public string OneLine => string.Join(" ", Query.Split(new[] { '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries).Select(l => l.Trim())).Trim();
@@ -117,6 +123,47 @@ public sealed class QueryHistory
     /// <summary>How many entries are favorites.</summary>
     public int FavoriteCount => entries.Count(e => e.IsFavorite);
 
+    private static List<string> MergeTags(IEnumerable<string>? a, IEnumerable<string>? b) =>
+        CleanTags((a ?? Enumerable.Empty<string>()).Concat(b ?? Enumerable.Empty<string>()));
+
+    /// <summary>Trims the tags, drops blanks and duplicates (ignoring case) and sorts them.</summary>
+    public static List<string> CleanTags(IEnumerable<string>? tags) =>
+        (tags ?? Enumerable.Empty<string>()).Select(t => t?.Trim() ?? "").Where(t => t.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(t => t, StringComparer.OrdinalIgnoreCase).ToList();
+
+    /// <summary>Every tag in use, sorted.</summary>
+    public IReadOnlyList<string> AllTags => CleanTags(entries.SelectMany(e => e.Tags ?? new List<string>()));
+
+    /// <summary>Replaces the tags of these entries. Returns how many entries changed.</summary>
+    public int SetTags(IEnumerable<string> ids, IEnumerable<string>? tags)
+    {
+        var set = ids.ToHashSet();
+        var clean = CleanTags(tags);
+        var changed = 0;
+        foreach (var entry in entries.Where(e => set.Contains(e.Id) && !clean.SequenceEqual(e.Tags ?? new List<string>())))
+        {
+            entry.Tags = new List<string>(clean);
+            changed++;
+        }
+        if (changed > 0) SaveAndNotify();
+        return changed;
+    }
+
+    /// <summary>How many entries have a caption.</summary>
+    public int CaptionedCount => entries.Count(e => !string.IsNullOrWhiteSpace(e.Caption));
+
+    /// <summary>Sets the caption of an entry; null or blank removes it. Returns false when there is no such entry.</summary>
+    public bool SetCaption(string id, string? caption)
+    {
+        var entry = entries.FirstOrDefault(e => e.Id == id);
+        if (entry == null) return false;
+        var trimmed = string.IsNullOrWhiteSpace(caption) ? null : caption.Trim();
+        if (entry.Caption == trimmed) return true;
+        entry.Caption = trimmed;
+        SaveAndNotify();
+        return true;
+    }
+
     /// <summary>Marks or unmarks entries as favorites. Returns how many entries changed.</summary>
     public int SetFavorite(IEnumerable<string> ids, bool favorite)
     {
@@ -179,10 +226,17 @@ public sealed class QueryHistory
             else if (existing.RunAtUtc < entry.RunAtUtc)
             {
                 entry.IsFavorite |= existing.IsFavorite;
+                if (string.IsNullOrWhiteSpace(entry.Caption)) entry.Caption = existing.Caption;
+                entry.Tags = MergeTags(entry.Tags, existing.Tags);
                 entries[entries.IndexOf(existing)] = entry;
                 updated++;
             }
-            else if (entry.IsFavorite && !existing.IsFavorite) { existing.IsFavorite = true; updated++; }
+            else if ((entry.IsFavorite && !existing.IsFavorite) || (string.IsNullOrWhiteSpace(existing.Caption) && !string.IsNullOrWhiteSpace(entry.Caption)))
+            {
+                existing.IsFavorite |= entry.IsFavorite;
+                if (string.IsNullOrWhiteSpace(existing.Caption)) existing.Caption = entry.Caption;
+                updated++;
+            }
             else skipped++;
         }
         if (added + updated > 0)
@@ -206,7 +260,13 @@ public sealed class QueryHistory
         if (string.IsNullOrWhiteSpace(entry.Query)) return;
         RemoveExpired();
         // Running a favorite again keeps it a favorite.
-        if (entries.RemoveAll(e => SameQuery(e, entry) && e.IsFavorite) > 0) entry.IsFavorite = true;
+        // The same goes for the caption.
+        foreach (var same in entries.Where(e => SameQuery(e, entry)))
+        {
+            entry.IsFavorite |= same.IsFavorite;
+            if (string.IsNullOrWhiteSpace(entry.Caption)) entry.Caption = same.Caption;
+            entry.Tags = MergeTags(entry.Tags, same.Tags);
+        }
         entries.RemoveAll(e => SameQuery(e, entry));
         entries.Insert(0, entry);
         TrimToCapacity(keep: entry);
@@ -227,7 +287,7 @@ public sealed class QueryHistory
     }
 
     /// <summary>
-    /// Entries whose query, connection or database contain every word of <paramref name="text"/> (ignoring case),
+    /// Entries whose caption, tags, query, connection or database contain every word of <paramref name="text"/> (ignoring case),
     /// optionally only for one connection and/or only the favorites.
     /// </summary>
     public IReadOnlyList<QueryHistoryEntry> Search(string? text, string? connectionId = null, bool favoritesOnly = false)
@@ -236,6 +296,8 @@ public sealed class QueryHistory
         return entries.Where(e => connectionId == null || e.ConnectionId == connectionId)
             .Where(e => !favoritesOnly || e.IsFavorite)
             .Where(e => words.All(w => e.Query.Contains(w, StringComparison.OrdinalIgnoreCase)
+                                        || (e.Caption?.Contains(w, StringComparison.OrdinalIgnoreCase) ?? false)
+                                        || (e.Tags?.Any(t => t.Contains(w, StringComparison.OrdinalIgnoreCase)) ?? false)
                                         || (e.ConnectionName?.Contains(w, StringComparison.OrdinalIgnoreCase) ?? false)
                                         || (e.Database?.Contains(w, StringComparison.OrdinalIgnoreCase) ?? false)))
             .ToList();

@@ -59,7 +59,9 @@ public sealed class MainWindowTests : IDisposable
         Assert.False(window.FindControl<MenuItem>("MenuRunQuery")!.IsEnabled);
         Assert.False(window.FindControl<MenuItem>("MenuNewQuery")!.IsEnabled);
         Assert.Equal("Ctrl+R", window.FindControl<MenuItem>("MenuRunQuery")!.HotKey?.ToString());
-        Assert.Equal("F5", window.FindControl<MenuItem>("MenuRefresh")!.HotKey?.ToString());
+        // F5 is handled by the window (runs the query in a query tab, refreshes otherwise), so it is shown, not bound.
+        Assert.Equal("F5", window.FindControl<MenuItem>("MenuRefresh")!.InputGesture?.ToString());
+        Assert.Equal("F5", window.FindControl<MenuItem>("MenuRunQuery")!.InputGesture?.ToString());
         window.Close();
     }
 

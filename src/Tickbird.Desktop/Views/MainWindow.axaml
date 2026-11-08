@@ -77,7 +77,7 @@
         <MenuItem Header="_Reset Window Layout" Click="OnResetWindowLayout" />
       </MenuItem>
       <MenuItem Header="_Connections">
-        <MenuItem Name="MenuRefresh" Header="_Refresh" HotKey="F5" Click="OnRefresh" />
+        <MenuItem Name="MenuRefresh" Header="_Refresh" InputGesture="F5" Click="OnRefresh" />
         <MenuItem Header="_Manage" Click="OnManage" />
       </MenuItem>
       <MenuItem Header="_Query">
@@ -85,8 +85,11 @@
         <MenuItem Name="MenuOpenQuery" Header="_Open Query..." HotKey="Ctrl+O" Click="OnOpenQuery" />
         <MenuItem Name="MenuSaveQuery" Header="_Save Query..." HotKey="Ctrl+S" Click="OnSaveQuery" />
         <Separator />
-        <MenuItem Name="MenuRunQuery" Header="_Run" HotKey="Ctrl+R" Click="OnRunQuery" />
+        <MenuItem Name="MenuRunQuery" Header="_Run" HotKey="Ctrl+R" InputGesture="F5" Click="OnRunQuery" />
         <MenuItem Name="MenuStopQuery" Header="S_top" HotKey="Alt+Pause" Click="OnStopQuery" />
+        <Separator />
+        <MenuItem Name="MenuSaveSnippet" Header="Save as S_nippet…" Click="OnSaveSnippet" />
+        <MenuItem Name="MenuSnippets" Header="Sni_ppets…" HotKey="Ctrl+Shift+I" Click="OnSnippets" />
         <Separator />
         <MenuItem Name="MenuFind" Header="_Find…" InputGesture="Ctrl+F" Click="OnFind" />
         <MenuItem Name="MenuReplace" Header="R_eplace…" InputGesture="Ctrl+H" Click="OnReplace" />
@@ -131,6 +134,8 @@
         </MenuItem>
       </MenuItem>
       <MenuItem Header="_Help">
+        <MenuItem Name="MenuGettingStarted" Header="_Getting Started" Click="OnGettingStarted" />
+        <Separator />
         <MenuItem Header="_About" Click="OnAbout" />
       </MenuItem>
     </Menu>
@@ -162,10 +167,10 @@
     <!-- Columns: left auto-hide tabs | left dock | splitter | documents | splitter | right dock | right auto-hide tabs.
          Widths are set by the docking code (MainWindow.Docking.cs). -->
     <Grid Name="WorkArea" ColumnDefinitions="Auto,320,4,*,0,0,Auto">
-      <Border Name="LeftAutoHideStrip" Grid.Column="0" Background="#F0F5FB" BorderBrush="#d9e5f0" BorderThickness="0,0,1,0"
+      <Border Name="LeftAutoHideStrip" Grid.Column="0" Background="White" BorderBrush="#d9e5f0" BorderThickness="0,0,1,0"
               Padding="3,0" IsVisible="False" />
       <Border Name="LeftDockHost" Grid.Column="1">
-        <Border Name="ExplorerPane" Background="#F0F5FB" BorderBrush="#d9e5f0" BorderThickness="0,0,1,0">
+        <Border Name="ExplorerPane" Background="White" BorderBrush="#d9e5f0" BorderThickness="0,0,1,0">
           <Border.Resources>
             <svc:IconConverter x:Key="IconConverter" />
             <!-- Compact, SSMS-like tree: 16px icons, ~22px rows, small expander chevrons. -->
@@ -319,7 +324,7 @@
                 </StackPanel.ContextMenu>
                 <Image Width="16" Height="16" Source="{Binding IconName, Converter={StaticResource IconConverter}}" />
                 <TextBlock Text="{Binding Title}" MaxWidth="300" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                <Button Content="✕" Padding="4,0" Background="Transparent" BorderThickness="0" FontSize="10" Click="OnCloseTab" />
+                <Button Content="✕" ToolTip.Tip="Close tab" Padding="4,0" Background="Transparent" BorderThickness="0" FontSize="10" Click="OnCloseTab" />
               </StackPanel>
             </DataTemplate>
           </TabControl.ItemTemplate>

@@ -20,7 +20,7 @@ namespace Tickbird.Desktop.Views;
 
 public partial class MainWindow : Window
 {
-    private sealed record ToolItem(string Icon, string Tip, Func<Task> Action, Func<CommandAvailability, bool> Enabled, string? Text = null);
+    private sealed record ToolItem(string Icon, string Tip, Func<Task> Action, Func<CommandAvailability, bool> Enabled, string? Text = null, string? Label = null);
 
     private readonly TickbirdApp app;
     private readonly List<(Control Control, Func<CommandAvailability, bool> Enabled)> commandControls = new();
@@ -42,6 +42,8 @@ public partial class MainWindow : Window
             if (e.PropertyName is nameof(MainWindowViewModel.Commands) or nameof(MainWindowViewModel.SelectedTab) or nameof(MainWindowViewModel.SelectedNode)) ApplyCommandState();
         };
         BuildToolBar();
+        Closing += OnMainWindowClosingConfirm;
+        InitTabSwitcher();
         BuildMenuState();
         BuildTreeContextMenu();
         ApplySettings();
@@ -65,7 +67,47 @@ public partial class MainWindow : Window
             if (!showConnectionsOnStart) return;
             await Task.Delay(250);
             if (IsVisible) await ShowConnectionsDialog();
+            if (IsVisible && app.Settings.ShowGettingStarted) ShowGettingStarted();
         });
+    }
+
+    private GettingStartedWindow? gettingStarted;
+
+    private void OnGettingStarted(object? s, RoutedEventArgs e) => ShowGettingStarted();
+
+    /// <summary>Opens the Getting Started guide beside the main window (or brings it forward).</summary>
+    public void ShowGettingStarted()
+    {
+        if (gettingStarted != null) { gettingStarted.Activate(); return; }
+        var startedUtc = DateTime.UtcNow;
+        bool OnDatabase() => Node is { Kind: NodeKind.Database or NodeKind.Measurement };
+        var steps = new List<GuideStep>
+        {
+            new("1. Add a connection", "Enter the address of your InfluxDB server and save it.",
+                () => app.Settings.Connections.Count > 0, "Add Connection…", () => Run(ShowConnectionsDialog)),
+            new("2. Connect and pick a database", "In Manage Connections choose your server and click Connect. Then expand it in the Object Explorer and click a database.",
+                () => CurrentQueryView != null || OnDatabase()),
+            new("3. Open a query", "With a database selected, open a query tab. Its editor starts with a sample query you can change.",
+                () => CurrentQueryView != null, "New Query", () => Run(() => Do(NewQuery)), OnDatabase),
+            new("4. Run the query", "Press F5 (or Ctrl+E) in the editor. Select part of the text to run only that part. Results appear below.",
+                () => app.History.Entries.Count > 0 && app.History.Entries[0].RunAtUtc >= startedUtc,
+                "Run Query (F5)", () => Run(RunCurrent), () => CurrentQueryView != null),
+        };
+        var window = gettingStarted = new GettingStartedWindow(steps, app.Settings.ShowGettingStarted);
+        window.Closed += (_, _) =>
+        {
+            gettingStarted = null;
+            var show = window.ShowAtStartup.IsChecked == true;
+            if (app.Settings.ShowGettingStarted == show) return;
+            app.Settings.ShowGettingStarted = show;
+            app.Save();
+        };
+        window.Opened += (_, _) =>
+        {
+            var scale = DesktopScaling;
+            window.Position = new PixelPoint(Position.X + (int)((Bounds.Width - window.Width - 24) * scale), Position.Y + (int)(110 * scale));
+        };
+        window.Show(this);
     }
 
     private async Task ShowUpdateNoticeAsync()
@@ -105,11 +147,11 @@ public partial class MainWindow : Window
             new("ShowQueries", "Show Queries", ShowQueries, c => c.ShowQueries),
             null,
             new("Refresh", "Refresh", () => Do(RefreshNode), c => c.Refresh),
-            new("NewQuery", "New Query", () => Do(NewQuery), c => c.NewQuery),
+            new("NewQuery", "New Query", () => Do(NewQuery), c => c.NewQuery, null, "New Query"),
             new("RunQuery", "Run Query", RunCurrent, c => c.RunQuery),
             new("StopQuery", "Stop Query", () => { CurrentQueryView?.CancelQuery(); return Task.CompletedTask; }, _ => CurrentQueryView?.IsRunning == true),
-            new("", "Comment Selected Lines", () => { CurrentQueryView?.CommentSelectedLines(); return Task.CompletedTask; }, c => c.CommentQuery, "--"),
-            new("", "Uncomment Selected Lines", () => { CurrentQueryView?.UncommentSelectedLines(); return Task.CompletedTask; }, c => c.CommentQuery, "↶"),
+            new("Comment", "Comment Selected Lines", () => { CurrentQueryView?.CommentSelectedLines(); return Task.CompletedTask; }, c => c.CommentQuery),
+            new("Uncomment", "Uncomment Selected Lines", () => { CurrentQueryView?.UncommentSelectedLines(); return Task.CompletedTask; }, c => c.CommentQuery),
             null,
             new("CreateDatabase", "Create Database", () => Do(CreateDatabase), c => c.CreateDatabase),
             new("ContinuousQuery", "Show Continuous Queries", () => Do(ShowContinuousQueries), c => c.ContinuousQueries),
@@ -132,10 +174,21 @@ public partial class MainWindow : Window
                 continue;
             }
             var content = item.Text != null
-                ? (object)new TextBlock { Text = item.Text, FontWeight = Avalonia.Media.FontWeight.Bold, FontSize = 14, Foreground = Avalonia.Media.Brush.Parse("#1a65a7"), Width = 20, TextAlignment = Avalonia.Media.TextAlignment.Center }
+                ? (Control)new TextBlock { Text = item.Text, FontWeight = Avalonia.Media.FontWeight.Bold, FontSize = 14, Foreground = Avalonia.Media.Brush.Parse("#1a65a7"), Width = 20, TextAlignment = Avalonia.Media.TextAlignment.Center }
                 : new Image { Source = ShellIcons.Get(item.Icon), Width = 18, Height = 18 };
             var button = new Button { Content = content, Tag = item.Icon };
             button.Classes.Add("shellTool");
+            if (item.Label != null)
+            {
+                button.Width = double.NaN;
+                button.Padding = new Thickness(6, 0);
+                button.Content = new StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 4,
+                    Children = { content, new TextBlock { Text = item.Label, VerticalAlignment = VerticalAlignment.Center, Foreground = Avalonia.Media.Brush.Parse("#1a1a1a") } }
+                };
+            }
+            else button.Content = content;
             ToolTip.SetTip(button, item.Tip);
             var action = item.Action;
             button.Click += async (_, _) => await Run(action);
@@ -341,6 +394,8 @@ public partial class MainWindow : Window
     private void OnFind(object? s, RoutedEventArgs e) => CurrentQueryView?.ShowFind(replace: false);
     private void OnReplace(object? s, RoutedEventArgs e) => CurrentQueryView?.ShowFind(replace: true);
     private void OnShowQueryHistory(object? s, RoutedEventArgs e) => ShowQueryHistory();
+    private async void OnSaveSnippet(object? s, RoutedEventArgs e) { if (CurrentQueryView is { } q) await Run(q.SaveSnippetAsync); }
+    private async void OnSnippets(object? s, RoutedEventArgs e) { if (CurrentQueryView is { } q) await Run(q.InsertSnippetAsync); }
 
     private async void OnQueryTimeout(object? s, RoutedEventArgs e)
     {
@@ -763,7 +818,7 @@ public partial class MainWindow : Window
     {
         app.History.Prune();
         if (Vm.FocusExisting(QueryHistoryTabId)) return;
-        var view = new QueryHistoryView(app.History, OpenFromHistoryAsync);
+        var view = new QueryHistoryView(app.History, OpenFromHistoryAsync, RunFromHistoryAsync);
         Vm.AddTab(new TabViewModel(QueryHistoryTabId, "Query History", TabKind.Tool, null, "History", view));
     }
 
@@ -771,7 +826,12 @@ public partial class MainWindow : Window
     /// Reopens a history entry in a new query tab on its connection and database. When that server is not
     /// connected yet, it is connected first (and shown in the Object Explorer), so the query can be run at once.
     /// </summary>
-    public async Task OpenFromHistoryAsync(QueryHistoryEntry entry)
+    public Task OpenFromHistoryAsync(QueryHistoryEntry entry) => OpenFromHistoryAsync(entry, run: false);
+
+    /// <summary>Opens a history entry in a new query tab and runs it at once.</summary>
+    public Task RunFromHistoryAsync(QueryHistoryEntry entry) => OpenFromHistoryAsync(entry, run: true);
+
+    private async Task OpenFromHistoryAsync(QueryHistoryEntry entry, bool run)
     {
         var connection = app.Settings.Connections.FirstOrDefault(c => c.Id == entry.ConnectionId);
         if (connection == null)
@@ -784,7 +844,8 @@ public partial class MainWindow : Window
         await Run(async () =>
         {
             if (Vm.FindConnectionNode(connection.Id) == null && !await ConnectForHistoryAsync(connection, entry.Database)) return;
-            OpenQueryTab(connection, entry.Database, entry.Query);
+            var tab = OpenQueryTab(connection, entry.Database, entry.Query);
+            if (run) await tab.ExecuteAsync();
         });
     }
 
@@ -858,15 +919,43 @@ public partial class MainWindow : Window
         if (Vm.SelectedTab?.Content is RequestView view) await view.ExecuteAsync();
     }
 
-    private void OnCloseTab(object? sender, RoutedEventArgs e)
+    /// <summary>Asks about each tab with unsaved query edits. Returns false when the user cancels.</summary>
+    private async Task<bool> ConfirmDiscardAsync(IEnumerable<TabViewModel> tabs)
     {
-        if ((sender as Control)?.DataContext is TabViewModel tab) Vm.CloseTab(tab);
+        foreach (var tab in tabs.ToList())
+        {
+            if (tab.Content is not QueryView { IsDirty: true } query) continue;
+            Vm.SelectedTab = tab;
+            var choice = await Dialogs.AskSaveChangesAsync(this, $"The query in \"{tab.Title}\" has unsaved changes. Do you want to save it?");
+            if (choice == Dialogs.SaveChoice.Cancel) return false;
+            if (choice == Dialogs.SaveChoice.Save && !await query.SaveQueryAsync()) return false;
+        }
+        return true;
     }
 
-    private void OnCloseAllButThis(object? sender, RoutedEventArgs e)
+    private async void OnCloseTab(object? sender, RoutedEventArgs e)
     {
-        if ((sender as Control)?.DataContext is TabViewModel tab) Vm.CloseAllBut(tab);
+        if ((sender as Control)?.DataContext is not TabViewModel tab) return;
+        if (await ConfirmDiscardAsync(new[] { tab })) Vm.CloseTab(tab);
     }
 
-    private void OnCloseAll(object? sender, RoutedEventArgs e) => Vm.CloseAll();
+    private async void OnCloseAllButThis(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is not TabViewModel keep) return;
+        if (await ConfirmDiscardAsync(Vm.Tabs.Where(t => t != keep))) Vm.CloseAllBut(keep);
+    }
+
+    private async void OnCloseAll(object? sender, RoutedEventArgs e)
+    {
+        if (await ConfirmDiscardAsync(Vm.Tabs)) Vm.CloseAll();
+    }
+
+    private bool closeConfirmed;
+
+    private async void OnMainWindowClosingConfirm(object? sender, WindowClosingEventArgs e)
+    {
+        if (closeConfirmed || !Vm.Tabs.Any(t => t.Content is QueryView { IsDirty: true })) return;
+        e.Cancel = true;
+        if (await ConfirmDiscardAsync(Vm.Tabs)) { closeConfirmed = true; Close(); }
+    }
 }

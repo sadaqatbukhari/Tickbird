@@ -93,7 +93,9 @@ internal static class ConnectionDialogLayout
         AddRow(auth, secretLabel, secret);
 
         var ssl = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 14, Margin = new Thickness(0, 16, 0, 0) };
-        ssl.Children.Add(Icon("M4,9 L4,5 C4,0 12,0 12,5 L12,9 M2,9 L14,9 L14,19 L2,19 Z", 17, Ink));
+        var sslIcon = Icon("M4,9 L4,5 C4,0 12,0 12,5 L12,9 M2,9 L14,9 L14,19 L2,19 Z", 17, Ink);
+        ToolTip.SetTip(sslIcon, "Secure connection (TLS)");
+        ssl.Children.Add(sslIcon);
         var sslText = new StackPanel { Spacing = 2, Children =
         {
             new TextBlock { Text = "Use SSL", FontSize = 12, Foreground = Ink },

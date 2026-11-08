@@ -144,6 +144,9 @@ public abstract class ListRequestView : RequestView
     private readonly TextBlock status = new() { Margin = new Thickness(4, 10, 4, 2), FontSize = 12, Foreground = TickbirdTheme.Muted };
     private TableData? lastTable;
 
+    /// <summary>The page layout: header on top, status at the bottom, the grid in the middle.</summary>
+    protected readonly DockPanel Layout = new();
+
     protected ListRequestView()
     {
         var export = new Button { Content = "Export ▾", Padding = new Thickness(8, 3) };
@@ -162,7 +165,7 @@ public abstract class ListRequestView : RequestView
         Header.Children.Add(refresh);
         Header.Children.Add(export);
 
-        var panel = new DockPanel();
+        var panel = Layout;
         DockPanel.SetDock(Header, Dock.Top);
         DockPanel.SetDock(status, Dock.Bottom);
         panel.Children.Add(Header);
