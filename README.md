@@ -1,18 +1,19 @@
 <p align="center"><img src="src/Tickbird.Desktop/Assets/BrandLogo.png" alt="Tickbird" height="72"></p>
 
 # Tickbird
-**Tickbird is a cross-platform desktop client for exploring and managing time series databases. It currently supports [InfluxDB](https://www.influxdata.com/time-series-platform/influxdb/) (1.x and 3.x) and [TimescaleDB](https://www.timescale.com/), and is built so that more databases (such as CrateDB and QuestDB) can be added.**
+**Tickbird is a cross-platform desktop client for exploring and managing time series databases. It currently supports [InfluxDB](https://www.influxdata.com/time-series-platform/influxdb/) (1.x and 3.x), [TimescaleDB](https://www.timescale.com/) and [CrateDB](https://cratedb.com/), and is built so that more databases (such as QuestDB) can be added.**
 
 Its inspiration comes from other similar database management tools such as [SQL Server Management Studio](https://en.wikipedia.org/wiki/SQL_Server_Management_Studio)
-. Tickbird supports InfluxDB 1.x, InfluxDB 3.x and TimescaleDB.
+. Tickbird supports InfluxDB 1.x, InfluxDB 3.x, TimescaleDB and CrateDB.
 The 1.x integration uses InfluxData's official `InfluxDB.Client` package, the 3.x
-integration uses the official `InfluxDB3.Client` package, and TimescaleDB uses the
+integration uses the official `InfluxDB3.Client` package, and TimescaleDB and CrateDB use the
 [Npgsql](https://www.npgsql.org/) PostgreSQL driver.
 
 ## Current Release Features
 
 * **InfluxDB 1.x and 3.x connections** - Choose the server generation when creating or editing a connection.
 * **TimescaleDB** - Manage a TimescaleDB (PostgreSQL) server with the same tools as InfluxDB: databases, hypertables, tags and fields, chunks, retention policies, continuous aggregates, backfill, roles and privileges, running queries, diagnostics and statistics. See [Working with TimescaleDB](#working-with-timescaledb).
+* **CrateDB** - Browse and manage a CrateDB cluster over its PostgreSQL protocol: tables in all schemas, text columns and other columns, partitions, users and privileges, running jobs, nodes and health. The toolbar shows only what CrateDB can do. See [Working with CrateDB](#working-with-cratedb).
 * **Built for more databases** - Each database is described by a profile (what it can do, its words and defaults) and one client class, and the tree, menus, query editor, results, charts and maps are shared. See [adding a database](docs/adding-a-database.md).
 * **Official InfluxData clients** - Both integrations use the standard packages maintained by InfluxData.
 * **InfluxDB 3 SQL support** - Browse databases and tables, run SQL queries, write data, and perform health checks.
@@ -59,6 +60,7 @@ The following are planned features that are not yet implemented in the current v
    - [Connection Settings](#connection-settings)
    - [Connection Groups](#connection-groups)
    - [Working with TimescaleDB](#working-with-timescaledb)
+   - [Working with CrateDB](#working-with-cratedb)
  - [Connecting to a Server](#connecting-to-a-server)
  - [Working with Connections](#working-with-connections)
    - [Showing Server Diagnostics](#showing-server-diagnostics)
@@ -168,7 +170,7 @@ Press the **Create** button to add your first InfluxDB connection using the **Co
 Use the Connection Settings dialog to configure the details of the InfluxDB connection:
 
  * **Name** - The name of the connection. This is the label you will see when working with this connection.
- * **Version** - Select the database: **InfluxDB 1.x**, **InfluxDB 3.x** or **TimescaleDB**. The port, the sign-in fields and the available commands follow your choice.
+ * **Version** - Select the database: **InfluxDB 1.x**, **InfluxDB 3.x**, **TimescaleDB** or **CrateDB**. The port, the sign-in fields and the available commands follow your choice.
  * **Group** - Optional. Pick an existing group or type a new name, for example `PROD`. See [Connection Groups](#connection-groups).
  * **Address** - The InfluxDB server's host URI. Exclude protocol information. **Port** is filled in to the right.
  * **Database** - The database to use for the connection. Leave this blank to list all databases _(requires admin privileges)_.
@@ -176,7 +178,7 @@ Use the Connection Settings dialog to configure the details of the InfluxDB conn
  * **API Token** - Bearer token for an InfluxDB 3.x connection.
  * **Use SSL** - Whether or not to use SSL security (HTTPS) when connecting to InfluxDB.
 
-InfluxDB 1.x defaults to port `8086`; InfluxDB 3.x defaults to port `8181`; TimescaleDB defaults to port `5432`.
+InfluxDB 1.x defaults to port `8086`; InfluxDB 3.x defaults to port `8181`; TimescaleDB and CrateDB default to port `5432`.
 InfluxDB 3 connections use SQL for queries. Database and table browsing, database creation/deletion,
 tag and field discovery, table deletion, queries, writes, and health checks are supported.
 InfluxDB 1.x-only commands (users and privileges, continuous queries, retention policies,
@@ -224,6 +226,24 @@ TimescaleDB's concepts appear with the same commands as InfluxDB's, under Timesc
 | Diagnostics / Statistics | Server and extension versions, uptime and connections; database, table, session, hypertable and background job statistics |
 
 Queries are PostgreSQL SQL, with `time_bucket()`, `first()`, `last()` and the other TimescaleDB functions in the IntelliSense list. Results can be shown as a grid, chart or map like any other result, and timestamps are shown in UTC.
+
+### Working with CrateDB
+
+Choose **CrateDB** as the **Version** in the connection dialog. The dialog has no **Database** field (a CrateDB server has one database, `crate`, and its tables live in schemas), starts with the user `crate`, and explains that Tickbird connects over CrateDB's PostgreSQL protocol on port `5432`; the Admin UI and HTTP use `4200`, and the dialog refuses that port. A new CrateDB has the user `crate` with no password.
+
+| In Tickbird (InfluxDB) | In CrateDB |
+| --- | --- |
+| Database | The one database, `crate` (cannot be created or dropped) |
+| Measurement | Table or view (tables in `doc` show by name, others as `schema.table`; the server's own schemas are hidden) |
+| Tag Keys / Tag Values | **Text Columns** (text and IP) and their distinct values (up to 1,000) |
+| Field Keys | **Columns**: every other column with its type |
+| Series | **Partitions** of a partitioned table, or the tag combinations of a plain table |
+| Drop Series | **Delete All Rows** (`DELETE FROM`, as CrateDB has no `TRUNCATE`) |
+| Users and Privileges | Users; **Read** is `DQL`, **Write** is `DML` and **All** adds `DDL`, for the whole cluster. CrateDB cannot make superusers with SQL, so there is no Administrator option |
+| Show Queries | Running jobs (`sys.jobs`); **Kill Query** runs `KILL` |
+| Diagnostics / Statistics | Node, version, uptime and cluster; nodes, tables, shards and table health |
+
+Retention policies, continuous queries, backfill and creating or dropping a database do not exist in CrateDB, so their toolbar buttons are hidden while a CrateDB connection is selected. Queries are CrateDB SQL, with `date_bin()`, `date_trunc()` and the `sys` tables in the IntelliSense list.
 
 ## Connecting to a Server
 

@@ -15,10 +15,10 @@ public static class PostgresSql
     }
 
     /// <summary>
-    /// Splits <c>schema.table</c> into its parts. A name without a dot is in the <c>public</c> schema. Quoted parts
+    /// Splits <c>schema.table</c> into its parts. A name without a dot is in the default schema (<c>public</c>; <c>doc</c> for CrateDB). Quoted parts
     /// (<c>"my.schema"."my.table"</c>) may contain dots.
     /// </summary>
-    public static (string Schema, string Table) SplitQualified(string name)
+    public static (string Schema, string Table) SplitQualified(string name, string defaultSchema = "public")
     {
         if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("A table name cannot be empty.", nameof(name));
         var parts = new List<string>();
@@ -42,22 +42,22 @@ public static class PostgresSql
         parts.Add(current.ToString());
         return parts.Count switch
         {
-            1 => ("public", parts[0]),
+            1 => (defaultSchema, parts[0]),
             2 => (parts[0], parts[1]),
             _ => (parts[^2], parts[^1])
         };
     }
 
     /// <summary>The quoted, schema-qualified name of a table: <c>"public"."cpu"</c>.</summary>
-    public static string Table(string name)
+    public static string Table(string name, string defaultSchema = "public")
     {
-        var (schema, table) = SplitQualified(name);
+        var (schema, table) = SplitQualified(name, defaultSchema);
         return Identifier(schema) + "." + Identifier(table);
     }
 
     /// <summary>The name shown in the tree: <c>cpu</c> for the <c>public</c> schema, otherwise <c>schema.cpu</c>.</summary>
-    public static string DisplayName(string schema, string table) =>
-        string.Equals(schema, "public", StringComparison.Ordinal) ? table : schema + "." + table;
+    public static string DisplayName(string schema, string table, string defaultSchema = "public") =>
+        string.Equals(schema, defaultSchema, StringComparison.Ordinal) ? table : schema + "." + table;
 
     /// <summary>A string literal: <c>'it''s'</c>. Backslashes switch to the escape syntax so the value is the same on every server setting.</summary>
     public static string Literal(string? value)
@@ -66,6 +66,12 @@ public static class PostgresSql
         var escaped = value.Replace("'", "''");
         return value.Contains('\\') ? "E'" + escaped.Replace("\\", "\\\\") + "'" : "'" + escaped + "'";
     }
+
+    /// <summary>
+    /// A string literal that only doubles quotes. For servers that read backslashes literally (CrateDB), where the
+    /// <c>E'...'</c> form of <see cref="Literal"/> is not available.
+    /// </summary>
+    public static string StringLiteral(string? value) => value == null ? "NULL" : "'" + value.Replace("'", "''") + "'";
 
     private static readonly Regex Duration = new(@"^\s*(?<n>\d+(?:\.\d+)?)\s*(?<u>ns|us|µs|ms|s|m|h|d|w)\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);

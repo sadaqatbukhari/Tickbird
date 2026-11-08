@@ -11,7 +11,8 @@ public enum DatabaseKind
 {
     InfluxDb1 = 0,
     InfluxDb3 = 3,
-    TimescaleDb = 10
+    TimescaleDb = 10,
+    CrateDb = 11
 }
 
 /// <summary>What a database can do; the UI shows only the commands a database supports.</summary>
@@ -45,6 +46,8 @@ public enum DatabaseCapabilities
     DropSeries = 1 << 14,
     DropMeasurement = 1 << 15,
     WriteData = 1 << 16,
+    /// <summary>Makes a user an administrator (superuser) or takes that away. A database without it shows users read-only in that respect.</summary>
+    AdministratorRights = 1 << 17,
 }
 
 /// <summary>How a connection signs in.</summary>
@@ -72,6 +75,11 @@ public sealed record DatabaseTerms(
     string RetentionPolicies,
     string Users)
 {
+    /// <summary>What the server's top level is called: "Database" for most, "Schema" where there is only one database.</summary>
+    public string Database { get; init; } = "Database";
+
+    public string Databases { get; init; } = "Databases";
+
     /// <summary>The InfluxDB words.</summary>
     public static readonly DatabaseTerms Influx = new("Measurement", "Measurements", "Tag Keys", "Tag Values", "Field Keys", "Series",
         "Drop Series", "Continuous Query", "Retention Policy", "User", "Continuous Queries", "Retention Policies", "Users");
@@ -131,6 +139,32 @@ public sealed class DatabaseProfile
 
     /// <summary>Extra keywords and functions for the editor's completion list (the database's own functions).</summary>
     public IReadOnlyList<(string Text, string Detail, bool IsFunction)> CompletionExtras { get; init; } = Array.Empty<(string, string, bool)>();
+
+    /// <summary>
+    /// False when the server has a single database that is not chosen by name (CrateDB). The connection dialog then
+    /// leaves the Database field out.
+    /// </summary>
+    public bool UsesDatabaseName { get; init; } = true;
+
+    /// <summary>The user name a new connection starts with (for example "crate" for CrateDB), or null for none.</summary>
+    public string? DefaultUsername { get; init; }
+
+    /// <summary>A short note shown in the connection dialog for this database (which port speaks which protocol...).</summary>
+    public string? ConnectionHint { get; init; }
+
+    /// <summary>
+    /// Extra checks of a connection before it is saved or tested, beyond a name and a host. Returns the message to show,
+    /// or null when the connection is fine.
+    /// </summary>
+    public Func<DatabaseConnection, string?>? ValidateConnection { get; init; }
+
+    /// <summary>The first problem with a connection, or null. The name and host are always required.</summary>
+    public string? Validate(DatabaseConnection connection)
+    {
+        if (string.IsNullOrWhiteSpace(connection.Name)) return "Connection name cannot be blank.";
+        if (string.IsNullOrWhiteSpace(connection.Host)) return "Host cannot be blank.";
+        return ValidateConnection?.Invoke(connection);
+    }
 
     /// <summary>The label of the server version in the Ping result, for example "InfluxDB Version".</summary>
     public string VersionLabel { get; init; } = "Version";

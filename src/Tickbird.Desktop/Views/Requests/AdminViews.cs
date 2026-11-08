@@ -291,13 +291,17 @@ public sealed class UsersView : RequestView
         UpdateButtons();
     }
 
+    /// <summary>False for a database that cannot make administrators with SQL (CrateDB).</summary>
+    private bool CanSetAdministrator => Client == null || Client.Connection.Profile.Supports(DatabaseCapabilities.AdministratorRights);
+
     private DatabaseUser? SelectedUser => (users.SelectedItem as GridRow)?.Tag as DatabaseUser;
     private DatabaseGrant? SelectedGrant => (grants.SelectedItem as GridRow)?.Tag as DatabaseGrant;
 
     private void UpdateButtons()
     {
         var u = SelectedUser;
-        editUser.IsEnabled = password.IsEnabled = dropUser.IsEnabled = u != null;
+        editUser.IsEnabled = u != null && CanSetAdministrator;
+        password.IsEnabled = dropUser.IsEnabled = u != null;
         grant.IsEnabled = u != null && !u.IsAdmin;
         editGrant.IsEnabled = revoke.IsEnabled = SelectedGrant != null;
         grants.IsEnabled = u != null && !u.IsAdmin;
@@ -339,7 +343,7 @@ public sealed class UsersView : RequestView
     private async Task CreateUserAsync()
     {
         if (OwnerWindow == null) return;
-        var input = await TickbirdDialogs.CreateUserAsync(OwnerWindow);
+        var input = await TickbirdDialogs.CreateUserAsync(OwnerWindow, CanSetAdministrator);
         if (input == null) return;
         if (users.ItemsSource is IEnumerable<GridRow> existing && existing.Any(r => r[0] == input.Name))
         { await ShowError("User already exists: " + input.Name, "Create Error"); return; }

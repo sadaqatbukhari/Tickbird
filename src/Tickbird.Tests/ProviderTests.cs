@@ -30,7 +30,7 @@ public class ProviderTests
         var names = DatabaseProfiles.All.Select(p => p.DisplayName).ToList();
         Assert.Equal(names.Count, names.Distinct().Count());
         Assert.Contains("TimescaleDB", names);
-        Assert.Equal(new[] { "InfluxDB 1.x", "InfluxDB 3.x", "TimescaleDB" }, names);
+        Assert.Equal(new[] { "InfluxDB 1.x", "InfluxDB 3.x", "TimescaleDB", "CrateDB" }, names);
     }
 
     [Fact]
@@ -62,6 +62,7 @@ public class ProviderTests
         Assert.IsType<OfficialInfluxDb1Client>(DatabaseClientFactory.Create(new DatabaseConnection("1", "a", "h", 8086, null, null)));
         Assert.IsType<InfluxDb3Client>(DatabaseClientFactory.Create(new DatabaseConnection("2", "b", "h", 8181, null, null) { Kind = DatabaseKind.InfluxDb3 }));
         Assert.IsType<TimescaleDbClient>(DatabaseClientFactory.Create(new DatabaseConnection("3", "c", "h", 5432, "u", "p") { Kind = DatabaseKind.TimescaleDb }));
+        Assert.IsType<CrateDbClient>(DatabaseClientFactory.Create(new DatabaseConnection("4", "d", "h", 5432, "crate", "") { Kind = DatabaseKind.CrateDb }));
     }
 
     [Fact]

@@ -287,7 +287,7 @@ public partial class MainWindow : Window
                 case NodeKind.Connection:
                     var terms = node.Connection.Profile.Terms;
                     Add("Refresh", "Refresh", () => Do(RefreshNode));
-                    Add("Create Database", "CreateDatabase", () => Do(CreateDatabase), c.CreateDatabase);
+                    Add("Create " + terms.Database, "CreateDatabase", () => Do(CreateDatabase), c.CreateDatabase);
                     Add("Show " + terms.RetentionPolicies, "RetentionPolicy", () => OpenRequestTab(n => new RetentionPolicyView(), "RetentionPolicy", n => n.Connection.Name + ".policies"), c.ShowPolicies);
                     Add("Show " + terms.Users, "Users", () => OpenRequestTab(n => new UsersView(), "Users", n => n.Connection.Name + ".users"), c.ShowUsers);
                     Add("Show Queries", "ShowQueries", ShowQueries, c.ShowQueries);
@@ -300,7 +300,7 @@ public partial class MainWindow : Window
                     Add("New Query", "NewQuery", () => Do(NewQuery));
                     Add("Show " + node.Connection.Profile.Terms.ContinuousQueries, "ContinuousQuery", () => Do(ShowContinuousQueries), c.ContinuousQueries);
                     Add("Run Backfill", "BackFill", () => Do(RunBackfill), c.Backfill);
-                    Add("Drop Database", "DropDatabase", () => Do(DropDatabase), c.DropDatabase);
+                    Add("Drop " + node.Connection.Profile.Terms.Database, "DropDatabase", () => Do(DropDatabase), c.DropDatabase);
                     break;
                 case NodeKind.Measurement:
                     var words = node.Connection.Profile.Terms;
@@ -317,15 +317,43 @@ public partial class MainWindow : Window
         Tree.ContextMenu = menu;
     }
 
-    /// <summary>Toolbar tooltips use the words of the selected connection's database (Tag Keys, Columns...).</summary>
+    /// <summary>Which capability of the database a toolbar command needs; a command whose database lacks it is hidden.</summary>
+    public static readonly IReadOnlyDictionary<string, DatabaseCapabilities> ToolbarCapabilities = new Dictionary<string, DatabaseCapabilities>
+    {
+        ["RetentionPolicy"] = DatabaseCapabilities.RetentionPolicies,
+        ["Users"] = DatabaseCapabilities.Users,
+        ["Stats"] = DatabaseCapabilities.Statistics,
+        ["Diagnostics"] = DatabaseCapabilities.Diagnostics,
+        ["ShowQueries"] = DatabaseCapabilities.RunningQueries,
+        ["CreateDatabase"] = DatabaseCapabilities.CreateDatabase,
+        ["ContinuousQuery"] = DatabaseCapabilities.ContinuousQueries,
+        ["BackFill"] = DatabaseCapabilities.Backfill,
+        ["DropDatabase"] = DatabaseCapabilities.DropDatabase,
+        ["TagKeys"] = DatabaseCapabilities.TagKeys,
+        ["TagValues"] = DatabaseCapabilities.TagValues,
+        ["FieldKeys"] = DatabaseCapabilities.FieldKeys,
+        ["Series"] = DatabaseCapabilities.Series,
+        ["DropSeries"] = DatabaseCapabilities.DropSeries,
+        ["DropMeasurement"] = DatabaseCapabilities.DropMeasurement,
+    };
+
+    /// <summary>
+    /// The toolbar follows the selected connection's database: commands it cannot do are hidden (CrateDB has no retention
+    /// policies or continuous queries), separators that would be left next to nothing are hidden too, and the tooltips
+    /// use its words (Tag Keys, Columns...).
+    /// </summary>
     private void ApplyToolbarTerms()
     {
-        var terms = (Vm.SelectedNode is { HasConnection: true } node ? node.Connection.Profile : DatabaseProfiles.Get(DatabaseKind.InfluxDb1)).Terms;
+        var profile = Vm.SelectedNode is { HasConnection: true } selected ? selected.Connection.Profile : DatabaseProfiles.Get(DatabaseKind.InfluxDb1);
+        var terms = profile.Terms;
         foreach (var (control, _) in commandControls)
         {
             if (control is not Button { Tag: string icon } button) continue;
+            if (ToolbarCapabilities.TryGetValue(icon, out var needs)) button.IsVisible = profile.Supports(needs);
             var tip = icon switch
             {
+                "CreateDatabase" => "Create " + terms.Database,
+                "DropDatabase" => "Drop " + terms.Database,
                 "RetentionPolicy" => "Show " + terms.RetentionPolicies,
                 "Users" => "Show " + terms.Users,
                 "ContinuousQuery" => "Show " + terms.ContinuousQueries,
@@ -338,6 +366,29 @@ public partial class MainWindow : Window
                 _ => null
             };
             if (tip != null) ToolTip.SetTip(button, tip);
+        }
+        HideEmptySeparators();
+    }
+
+    /// <summary>A separator is shown only between two groups that each have a visible button.</summary>
+    private void HideEmptySeparators()
+    {
+        var children = ToolBar.Children;
+        var groupHasButton = false;
+        Separator? pending = null;
+        foreach (var child in children)
+        {
+            if (child is Separator separator)
+            {
+                separator.IsVisible = false;
+                if (groupHasButton) pending = separator;                 // an empty group keeps the separator already waiting
+                groupHasButton = false;
+            }
+            else if (child.IsVisible)
+            {
+                if (pending != null) { pending.IsVisible = true; pending = null; }
+                groupHasButton = true;
+            }
         }
     }
 

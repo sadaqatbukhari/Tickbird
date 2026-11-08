@@ -11,18 +11,23 @@ public sealed class NpgsqlRunner : ISqlRunner, IDisposable
 {
     private readonly DatabaseConnection connection;
     private readonly string defaultDatabase;
+    private readonly ServerCompatibilityMode compatibility;
     private readonly ConcurrentDictionary<string, NpgsqlDataSource> sources = new(StringComparer.Ordinal);
 
     /// <param name="connection">Host, port, user, password and SSL setting.</param>
     /// <param name="defaultDatabase">The database used when none is named and the connection names none (for example "postgres").</param>
-    public NpgsqlRunner(DatabaseConnection connection, string defaultDatabase)
+    /// <param name="compatibility">How much of a PostgreSQL catalog the server has. <see cref="ServerCompatibilityMode.NoTypeLoading"/>
+    /// for servers that only speak the protocol (CrateDB): Npgsql then does not read the type catalog when it connects.</param>
+    public NpgsqlRunner(DatabaseConnection connection, string defaultDatabase, ServerCompatibilityMode compatibility = ServerCompatibilityMode.None)
     {
         this.connection = connection;
         this.defaultDatabase = defaultDatabase;
+        this.compatibility = compatibility;
     }
 
     /// <summary>The connection settings for a database.</summary>
-    public static NpgsqlConnectionStringBuilder BuildConnectionString(DatabaseConnection connection, string database, bool trustServerCertificate)
+    public static NpgsqlConnectionStringBuilder BuildConnectionString(DatabaseConnection connection, string database, bool trustServerCertificate,
+        ServerCompatibilityMode compatibility = ServerCompatibilityMode.None)
     {
         var builder = new NpgsqlConnectionStringBuilder
         {
@@ -37,6 +42,7 @@ public sealed class NpgsqlRunner : ISqlRunner, IDisposable
             ApplicationName = "Tickbird",
             Pooling = true,
             MaxPoolSize = 8,
+            ServerCompatibilityMode = compatibility,
         };
         if (connection.UseSsl && trustServerCertificate) builder.TrustServerCertificate = true;
         return builder;
@@ -47,7 +53,7 @@ public sealed class NpgsqlRunner : ISqlRunner, IDisposable
         var name = !string.IsNullOrWhiteSpace(database) ? database
             : !string.IsNullOrWhiteSpace(connection.Database) ? connection.Database : defaultDatabase;
         return sources.GetOrAdd(name, n =>
-            NpgsqlDataSource.Create(BuildConnectionString(connection, n, DatabaseClientFactory.AllowUntrustedSsl()).ConnectionString));
+            NpgsqlDataSource.Create(BuildConnectionString(connection, n, DatabaseClientFactory.AllowUntrustedSsl(), compatibility).ConnectionString));
     }
 
     public async Task<IReadOnlyList<ResultSeries>> QueryAsync(string? database, string sql,

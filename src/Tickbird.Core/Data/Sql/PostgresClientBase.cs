@@ -34,13 +34,25 @@ public abstract class PostgresClientBase : DatabaseClient
     /// the connection's own database if it names one, so accounts that cannot use "postgres" still work.
     /// <paramref name="avoid"/> is a database that cannot be used, such as the one being dropped.
     /// </summary>
-    protected string CatalogDatabase(string? avoid = null)
+    protected virtual string CatalogDatabase(string? avoid = null)
     {
         var database = string.IsNullOrWhiteSpace(Connection.Database) ? MaintenanceDatabase : Connection.Database;
         if (string.Equals(database, avoid, StringComparison.Ordinal)) database = MaintenanceDatabase;
         if (string.Equals(database, avoid, StringComparison.Ordinal)) database = "template1";
         return database;
     }
+
+    /// <summary>The schema a table name without a schema belongs to: <c>public</c> for PostgreSQL, <c>doc</c> for CrateDB.</summary>
+    protected virtual string DefaultSchema => "public";
+
+    /// <summary>The quoted, schema-qualified name of a table, for use in SQL.</summary>
+    protected string TableRef(string name) => PostgresSql.Table(name, DefaultSchema);
+
+    /// <summary>A table name split into schema and table.</summary>
+    protected (string Schema, string Table) SplitName(string name) => PostgresSql.SplitQualified(name, DefaultSchema);
+
+    /// <summary>The name shown in the tree: the schema is left out for the default schema.</summary>
+    protected string DisplayName(string schema, string table) => PostgresSql.DisplayName(schema, table, DefaultSchema);
 
     /// <summary>The product name in messages, for example "PostgreSQL".</summary>
     protected virtual string ProductName => "PostgreSQL";
@@ -115,21 +127,27 @@ public abstract class PostgresClientBase : DatabaseClient
     /// <summary>The kinds of relation shown as measurements: tables, partitioned tables, views, materialized views, foreign tables.</summary>
     protected const string TableKinds = "c.relkind IN ('r', 'p', 'v', 'm', 'f')";
 
-    protected string MeasurementNamesSql =>
+    protected virtual string MeasurementNamesSql =>
         "SELECT n.nspname AS schema_name, c.relname AS table_name FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace " +
         $"WHERE {TableKinds} AND {HiddenSchemas} " +
         "ORDER BY (n.nspname <> 'public'), n.nspname, c.relname";
 
     public override async Task<IEnumerable<string>> GetMeasurementNamesAsync(string database) =>
         Rows(await Sql.QueryAsync(database, MeasurementNamesSql).ConfigureAwait(false))
-            .Select(r => PostgresSql.DisplayName(Text(r, 0), Text(r, 1))).ToList();
+            .Select(r => DisplayName(Text(r, 0), Text(r, 1))).ToList();
 
     public override async Task<CommandResult> DropMeasurementAsync(string database, string measurement)
     {
+        var keyword = await GetRelationKeywordAsync(database, measurement).ConfigureAwait(false);
+        return await ExecuteAsync(database, $"DROP {keyword} IF EXISTS {TableRef(measurement)}").ConfigureAwait(false);
+    }
+
+    /// <summary>The word that drops a relation of this kind: TABLE, VIEW, MATERIALIZED VIEW or FOREIGN TABLE.</summary>
+    protected virtual async Task<string> GetRelationKeywordAsync(string database, string measurement)
+    {
         var kind = Rows(await Sql.QueryAsync(database, "SELECT c.relkind::text FROM pg_class c WHERE c.oid = to_regclass(@name)",
-            Args(("name", PostgresSql.Table(measurement)))).ConfigureAwait(false)).Select(r => Text(r, 0)).FirstOrDefault();
-        var keyword = kind switch { "v" => "VIEW", "m" => "MATERIALIZED VIEW", "f" => "FOREIGN TABLE", _ => "TABLE" };
-        return await ExecuteAsync(database, $"DROP {keyword} IF EXISTS {PostgresSql.Table(measurement)}").ConfigureAwait(false);
+            Args(("name", TableRef(measurement)))).ConfigureAwait(false)).Select(r => Text(r, 0)).FirstOrDefault();
+        return kind switch { "v" => "VIEW", "m" => "MATERIALIZED VIEW", "f" => "FOREIGN TABLE", _ => "TABLE" };
     }
 
     // ------------------------------------------------------------------ columns (tags and fields)
@@ -139,31 +157,37 @@ public abstract class PostgresClientBase : DatabaseClient
         "FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace " +
         "WHERE n.nspname = @schema AND c.relname = @table AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum";
 
+    /// <summary>The query behind <see cref="GetColumnsAsync"/>: name and type per column, with <c>@schema</c> and <c>@table</c>.</summary>
+    protected virtual string ColumnsQuery => ColumnsSql;
+
     /// <summary>The columns of a table with their types, in table order.</summary>
     protected async Task<IReadOnlyList<(string Name, string Type)>> GetColumnsAsync(string database, string measurement)
     {
-        var (schema, table) = PostgresSql.SplitQualified(measurement);
-        return Rows(await Sql.QueryAsync(database, ColumnsSql, Args(("schema", schema), ("table", table))).ConfigureAwait(false))
+        var (schema, table) = SplitName(measurement);
+        return Rows(await Sql.QueryAsync(database, ColumnsQuery, Args(("schema", schema), ("table", table))).ConfigureAwait(false))
             .Select(r => (Text(r, 0), Text(r, 1))).ToList();
     }
 
+    /// <summary>True for a column type shown as a tag: text, which holds the values you group and filter by.</summary>
+    protected virtual bool IsTagType(string? dataType) => PostgresSql.IsTextType(dataType);
+
     /// <summary>Text columns, which hold the values you group and filter by (the tags).</summary>
     public override async Task<IEnumerable<string>> GetTagKeysAsync(string database, string measurement) =>
-        (await GetColumnsAsync(database, measurement).ConfigureAwait(false)).Where(c => PostgresSql.IsTextType(c.Type)).Select(c => c.Name).ToList();
+        (await GetColumnsAsync(database, measurement).ConfigureAwait(false)).Where(c => IsTagType(c.Type)).Select(c => c.Name).ToList();
 
     /// <summary>All the other columns (the fields): numbers, booleans and times, with their types.</summary>
     public override async Task<IEnumerable<FieldKey>> GetFieldKeysAsync(string database, string measurement) =>
-        (await GetColumnsAsync(database, measurement).ConfigureAwait(false)).Where(c => !PostgresSql.IsTextType(c.Type))
+        (await GetColumnsAsync(database, measurement).ConfigureAwait(false)).Where(c => !IsTagType(c.Type))
             .Select(c => new FieldKey(c.Name, c.Type)).ToList();
 
     public override async Task<IEnumerable<TagValue>> GetTagValuesAsync(string database, string measurement, string tag)
     {
         var column = PostgresSql.Identifier(tag);
-        var sql = $"SELECT DISTINCT {column}::text FROM {PostgresSql.Table(measurement)} WHERE {column} IS NOT NULL ORDER BY 1 LIMIT {MaxTagValues}";
+        var sql = $"SELECT DISTINCT {column}::text FROM {TableRef(measurement)} WHERE {column} IS NOT NULL ORDER BY 1 LIMIT {MaxTagValues}";
         return Rows(await Sql.QueryAsync(database, sql).ConfigureAwait(false)).Select(r => new TagValue(tag, Text(r, 0))).ToList();
     }
 
-    public string SchemaSql =>
+    public virtual string SchemaSql =>
         "SELECT n.nspname AS schema_name, c.relname AS table_name, a.attname AS column_name, " +
         "pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type " +
         "FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace " +
@@ -176,11 +200,11 @@ public abstract class PostgresClientBase : DatabaseClient
         var tables = new Dictionary<string, (List<FieldKey> Fields, List<string> Tags)>(StringComparer.Ordinal);
         foreach (var row in Rows(await Sql.QueryAsync(database, SchemaSql).ConfigureAwait(false)))
         {
-            var name = PostgresSql.DisplayName(Text(row, 0), Text(row, 1));
+            var name = DisplayName(Text(row, 0), Text(row, 1));
             if (!tables.TryGetValue(name, out var entry)) tables[name] = entry = (new List<FieldKey>(), new List<string>());
             var column = Text(row, 2);
             var type = Text(row, 3);
-            if (PostgresSql.IsTextType(type)) entry.Tags.Add(column);
+            if (IsTagType(type)) entry.Tags.Add(column);
             else entry.Fields.Add(new FieldKey(column, type));
         }
         return tables.OrderBy(t => t.Key, StringComparer.OrdinalIgnoreCase)
@@ -199,7 +223,7 @@ public abstract class PostgresClientBase : DatabaseClient
         var tags = (await GetTagKeysAsync(database, measurement).ConfigureAwait(false)).Take(6).ToList();
         if (tags.Count == 0) return new[] { measurement };
         var keys = string.Join(" || ", tags.Select(t => $"{PostgresSql.Literal("," + t + "=")} || coalesce({PostgresSql.Identifier(t)}::text, '')"));
-        var sql = $"SELECT DISTINCT {keys} FROM {PostgresSql.Table(measurement)} ORDER BY 1 LIMIT {MaxSeries}";
+        var sql = $"SELECT DISTINCT {keys} FROM {TableRef(measurement)} ORDER BY 1 LIMIT {MaxSeries}";
         return Rows(await Sql.QueryAsync(database, sql).ConfigureAwait(false)).Select(r => measurement + Text(r, 0)).ToList();
     }
 
@@ -207,8 +231,11 @@ public abstract class PostgresClientBase : DatabaseClient
     public override async Task<CommandResult> DropSeriesAsync(string database, string measurement = null)
     {
         if (string.IsNullOrWhiteSpace(measurement)) throw NotSupported("Deleting the data of a whole database");
-        return await ExecuteAsync(database, "TRUNCATE TABLE " + PostgresSql.Table(measurement)).ConfigureAwait(false);
+        return await ExecuteAsync(database, ClearTableStatement(measurement)).ConfigureAwait(false);
     }
+
+    /// <summary>The statement that removes every row but keeps the table.</summary>
+    protected virtual string ClearTableStatement(string measurement) => "TRUNCATE TABLE " + TableRef(measurement);
 
     // ------------------------------------------------------------------ queries
 
@@ -261,7 +288,7 @@ public abstract class PostgresClientBase : DatabaseClient
             names.Add($"@p{index}_{i}");
             i++;
         }
-        return ($"INSERT INTO {PostgresSql.Table(measurement)} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", names)})", parameters);
+        return ($"INSERT INTO {TableRef(measurement)} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", names)})", parameters);
     }
 
     public override Task<CommandResult> WriteAsync(string database, string measurement, IDictionary<string, object> tags,
@@ -285,8 +312,16 @@ public abstract class PostgresClientBase : DatabaseClient
             statements.Add(sql);
             foreach (var pair in p) parameters[pair.Key] = pair.Value;
         }
-        return statements.Count == 0 ? Task.FromResult(Ok("Nothing to write.")) : ExecuteAsync(database, string.Join(";\n", statements), parameters);
+        return statements.Count == 0 ? Task.FromResult(Ok("Nothing to write.")) : ExecuteBatchAsync(database, statements, parameters);
     }
+
+    /// <summary>
+    /// Runs several statements. PostgreSQL sends them as one command, so they succeed or fail together; a database that
+    /// cannot take several statements in one command (CrateDB) overrides this to run them one by one.
+    /// </summary>
+    protected virtual Task<CommandResult> ExecuteBatchAsync(string? database, IReadOnlyList<string> statements,
+        IReadOnlyDictionary<string, object?>? parameters = null) =>
+        ExecuteAsync(database, string.Join(";\n", statements), parameters);
 
     // ------------------------------------------------------------------ server
 
@@ -473,13 +508,13 @@ public abstract class PostgresClientBase : DatabaseClient
     public override async Task<CommandResult> GrantPrivilegeAsync(string username, DatabasePrivileges privilege, string database)
     {
         var schemas = Rows(await Sql.QueryAsync(database, UserSchemasSql).ConfigureAwait(false)).Select(r => Text(r, 0)).ToList();
-        return await ExecuteAsync(database, string.Join(";\n", GrantStatements(database, username, privilege, schemas))).ConfigureAwait(false);
+        return await ExecuteBatchAsync(database, GrantStatements(database, username, privilege, schemas).ToList()).ConfigureAwait(false);
     }
 
     public override async Task<CommandResult> RevokePrivilegeAsync(string username, DatabasePrivileges privilege, string database)
     {
         var schemas = Rows(await Sql.QueryAsync(database, UserSchemasSql).ConfigureAwait(false)).Select(r => Text(r, 0)).ToList();
-        return await ExecuteAsync(database, string.Join(";\n", GrantStatements(database, username, DatabasePrivileges.None, schemas))).ConfigureAwait(false);
+        return await ExecuteBatchAsync(database, GrantStatements(database, username, DatabasePrivileges.None, schemas).ToList()).ConfigureAwait(false);
     }
 
     // ------------------------------------------------------------------ what a database may not have

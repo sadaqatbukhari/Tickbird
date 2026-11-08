@@ -54,12 +54,15 @@ public static class TickbirdDialogs
         return new RetentionPolicyInput(name.Text!.Trim(), duration.Text!.Trim(), (int)(replication.Value ?? 1), isDefault.IsChecked == true);
     }
 
-    public static async Task<UserInput?> CreateUserAsync(Window owner)
+    public static async Task<UserInput?> CreateUserAsync(Window owner, bool allowAdministrator = true)
     {
         var name = Ui.Text();
         var password = Ui.Text(password: true);
         var admin = new CheckBox { Content = "Administrator" };
-        var dialog = new FormDialog("Create User", "Create", ("User name:", name), ("Password:", password), ("", admin));
+        // A database that cannot make administrators (CrateDB) has no such checkbox.
+        var dialog = allowAdministrator
+            ? new FormDialog("Create User", "Create", ("User name:", name), ("Password:", password), ("", admin))
+            : new FormDialog("Create User", "Create", ("User name:", name), ("Password:", password));
         dialog.Validate = () => Validation.User(name.Text, password.Text);
         return await dialog.ShowAsync(owner) ? new UserInput(name.Text!.Trim(), password.Text!, admin.IsChecked == true) : null;
     }
@@ -236,12 +239,27 @@ public static class TickbirdDialogs
 
         DatabaseProfile Selected() => profiles[Math.Max(0, server.SelectedIndex)];
         var shownProfile = Selected();
+        ConnectionDialogLayout.Parts? parts = null;
         void UpdateFields(bool updatePort)
         {
             var profile = Selected();
             var token = profile.Authentication == AuthenticationStyle.Token;
             username.IsVisible = !token;
             secretLabel.Text = token ? "API Token" : "Password";
+            // What changes with the database: the Database field (CrateDB has one database), a note, a starting user.
+            database.IsVisible = profile.UsesDatabaseName;
+            if (parts != null)
+            {
+                parts.DatabaseLabel.IsVisible = profile.UsesDatabaseName;
+                parts.Hint.Text = profile.ConnectionHint;
+                parts.Hint.IsVisible = !string.IsNullOrWhiteSpace(profile.ConnectionHint);
+            }
+            if (updatePort)
+            {
+                var previous = shownProfile.DefaultUsername;
+                if (string.IsNullOrWhiteSpace(username.Text) || string.Equals(username.Text, previous, StringComparison.Ordinal))
+                    username.Text = profile.DefaultUsername;
+            }
             // Move the port to the new database's default, unless the user typed another one.
             if (updatePort && (int)(port.Value ?? 0) == shownProfile.DefaultPort) port.Value = profile.DefaultPort;
             shownProfile = profile;
@@ -254,7 +272,7 @@ public static class TickbirdDialogs
             var token = profile.Authentication == AuthenticationStyle.Token;
             return new DatabaseConnection(id, name.Text ?? "", host.Text ?? "", (ushort)(port.Value ?? profile.DefaultPort),
                 token ? null : username.Text, token ? null : secret.Text, useSsl.IsChecked == true,
-                string.IsNullOrWhiteSpace(database.Text) ? null : database.Text, InfluxDbServerVersion.InfluxDb1, token ? secret.Text : null)
+                profile.UsesDatabaseName && !string.IsNullOrWhiteSpace(database.Text) ? database.Text : null, InfluxDbServerVersion.InfluxDb1, token ? secret.Text : null)
             {
                 Group = SelectedGroup(),
                 Kind = profile.Kind
@@ -264,10 +282,10 @@ public static class TickbirdDialogs
         var dialog = new FormDialog(existing == null ? "Create Connection" : "Edit Connection", existing == null ? "Create" : "Save",
             ("Name:", name), ("Group:", groupRow), ("Server:", server), ("Host:", host), ("Port:", port), ("Database:", database),
             ("Username:", username), ("Password:", secret), ("", useSsl));
-        ConnectionDialogLayout.Apply(dialog, existing == null, name, groupRow, server, host, port, database,
+        parts = ConnectionDialogLayout.Apply(dialog, existing == null, name, groupRow, server, host, port, database,
             username, usernameLabel, secret, secretLabel, useSsl);
-        dialog.Validate = () => string.IsNullOrWhiteSpace(name.Text) ? "Connection name cannot be blank."
-            : string.IsNullOrWhiteSpace(host.Text) ? "Host cannot be blank." : null;
+        // The name and host are always required; the chosen database may add its own checks (CrateDB's port 4200 is HTTP).
+        dialog.Validate = () => Selected().Validate(Build(existing?.Id ?? "validate"));
         UpdateFields(false);
 
         // The new group is only saved when the connection is saved.
@@ -285,6 +303,8 @@ public static class TickbirdDialogs
         {
             try
             {
+                var problem = Selected().Validate(Build(existing?.Id ?? "validate"));
+                if (problem != null) throw new InvalidOperationException(problem);
                 var client = DatabaseClientFactory.Create(Build(existing?.Id ?? Guid.NewGuid().ToString()));
                 if (!string.IsNullOrWhiteSpace(client.Connection.Database)) await client.GetMeasurementNamesAsync(client.Connection.Database);
                 else await client.GetDatabaseNamesAsync();
@@ -298,6 +318,8 @@ public static class TickbirdDialogs
         {
             try
             {
+                var problem = Selected().Validate(Build(existing?.Id ?? "validate"));
+                if (problem != null) throw new InvalidOperationException(problem);
                 var client = DatabaseClientFactory.Create(Build(existing?.Id ?? Guid.NewGuid().ToString()));
                 var response = await client.PingAsync();
                 if (!response.Success) throw new Exception("There was an error connecting to the server.");
@@ -324,7 +346,7 @@ public static class TickbirdDialogs
         panel.Children.Add(new TextBlock
         {
             Text = "Browse, query, chart and map your time series data, and manage servers, users and retention " +
-                   "policies. Supports InfluxDB 1.x (InfluxQL) and InfluxDB 3.x (SQL), with more databases planned.",
+                   "policies. Supports InfluxDB 1.x (InfluxQL), InfluxDB 3.x (SQL), TimescaleDB and CrateDB, with more databases planned.",
             TextWrapping = Avalonia.Media.TextWrapping.Wrap, Opacity = 0.85
         });
         panel.Children.Add(new TextBlock { Text = "Version " + version, Margin = new Thickness(0, 6, 0, 0) });

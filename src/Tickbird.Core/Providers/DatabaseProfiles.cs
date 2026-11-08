@@ -11,7 +11,7 @@ public static class DatabaseProfiles
         | DatabaseCapabilities.Backfill | DatabaseCapabilities.RunningQueries | DatabaseCapabilities.Statistics
         | DatabaseCapabilities.Diagnostics | DatabaseCapabilities.TagKeys | DatabaseCapabilities.TagValues
         | DatabaseCapabilities.FieldKeys | DatabaseCapabilities.Series | DatabaseCapabilities.DropSeries
-        | DatabaseCapabilities.DropMeasurement | DatabaseCapabilities.WriteData;
+        | DatabaseCapabilities.DropMeasurement | DatabaseCapabilities.WriteData | DatabaseCapabilities.AdministratorRights;
 
     private static readonly Dictionary<DatabaseKind, DatabaseProfile> Registered = new();
 
@@ -36,6 +36,7 @@ public static class DatabaseProfiles
         });
 
         Register(TimescaleDbClient.Profile);
+        Register(CrateDbClient.Profile);
     }
 
     /// <summary>Adds a database (or replaces the profile of a kind).</summary>
