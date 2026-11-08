@@ -6,7 +6,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// Represents the result of an InfluxDB query.
     /// </summary>
-    public class InfluxDbSeries
+    public class ResultSeries
     {
         #region Fields
 
@@ -41,7 +41,7 @@ namespace Tickbird.Core.Data
 
         #region Constructors
 
-        public InfluxDbSeries(string name, IList<string> columns, IDictionary<string, string> tags, IList<IList<object>> values)
+        public ResultSeries(string name, IList<string> columns, IDictionary<string, string> tags, IList<IList<object>> values)
         {
             //if (string.IsNullOrWhiteSpace(name)) throw new ArgumentNullException("name");
             if (columns == null) throw new ArgumentNullException("columns");

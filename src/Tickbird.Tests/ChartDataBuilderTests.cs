@@ -5,10 +5,10 @@ namespace Tickbird.Tests;
 
 public class ChartDataBuilderTests
 {
-    private static InfluxDbSeries Series(string? name, string[] columns, params object?[][] rows) =>
+    private static ResultSeries Series(string? name, string[] columns, params object?[][] rows) =>
         Series(name, columns, new Dictionary<string, string>(), rows);
 
-    private static InfluxDbSeries Series(string? name, string[] columns, Dictionary<string, string> tags, params object?[][] rows) =>
+    private static ResultSeries Series(string? name, string[] columns, Dictionary<string, string> tags, params object?[][] rows) =>
         new(name!, columns.ToList(), tags, rows.Select(r => (IList<object>)r.Cast<object>().ToList()).ToList());
 
     private static DateTime T(int minute) => new(2024, 1, 2, 3, minute, 0, DateTimeKind.Utc);

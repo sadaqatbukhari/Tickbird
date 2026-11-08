@@ -7,7 +7,7 @@ namespace Tickbird.Tests;
 
 public class RowFilterTests
 {
-    private static InfluxDbSeries Rows() =>
+    private static ResultSeries Rows() =>
         new("gps", new List<string> { "time", "state", "speed", "operatingmode" }, new Dictionary<string, string> { ["vehicle"] = "6S2495" },
             new List<IList<object>>
             {

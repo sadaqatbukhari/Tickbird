@@ -5,7 +5,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// Represents a field key from a database measurement.
     /// </summary>
-    public class InfluxDbFieldKey
+    public class FieldKey
     {
         #region Fields
 
@@ -23,7 +23,7 @@ namespace Tickbird.Core.Data
 
         #region Constructors
 
-        public InfluxDbFieldKey(string name, string type)
+        public FieldKey(string name, string type)
         {
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentNullException("name");
             if (string.IsNullOrWhiteSpace(type)) throw new ArgumentNullException("type");

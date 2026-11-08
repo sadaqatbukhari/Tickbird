@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Tickbird.Core.Data;
+using Tickbird.Core.Providers;
 using Tickbird.Core.Navigation;
 using Tickbird.Core.Query;
 using Tickbird.Core.Settings;
@@ -11,7 +12,7 @@ namespace Tickbird.Desktop.Services;
 
 public sealed record RetentionPolicyInput(string Name, string Duration, int Replication, bool IsDefault);
 public sealed record UserInput(string Name, string Password, bool IsAdmin);
-public sealed record PrivilegeInput(string Database, InfluxDbPrivileges Privilege);
+public sealed record PrivilegeInput(string Database, DatabasePrivileges Privilege);
 
 /// <summary>The application's dialogs (ports of the WinForms dialog classes).</summary>
 public static class TickbirdDialogs
@@ -26,12 +27,24 @@ public static class TickbirdDialogs
         return await dialog.ShowAsync(owner) ? name.Text!.Trim() : null;
     }
 
-    public static async Task<RetentionPolicyInput?> RetentionPolicyAsync(Window owner, InfluxDbRetentionPolicy? existing)
+    public static async Task<RetentionPolicyInput?> RetentionPolicyAsync(Window owner, RetentionPolicy? existing, DatabaseProfile? profile = null)
     {
         var creating = existing == null;
         var name = Ui.Text(existing?.Name);
         name.IsReadOnly = !creating;
         var duration = Ui.Text(existing?.Duration, watermark: "e.g. 30d, 12h, INF");
+        if (profile?.RetentionPerTable == true)
+        {
+            // The policy belongs to one table: only the table and how long its data is kept.
+            name.Watermark = "table, or schema.table";
+            duration.Watermark = "e.g. 30d, 12h, 1w";
+            var perTable = new FormDialog(creating ? "Create Retention Policy" : "Alter Retention Policy", creating ? "Create" : "Update",
+                ("Table:", name), ("Keep data for:", duration));
+            perTable.Validate = () => string.IsNullOrWhiteSpace(name.Text) ? "Table name cannot be blank."
+                : Validation.RetentionPolicy(name.Text, duration.Text);
+            if (!await perTable.ShowAsync(owner)) return null;
+            return new RetentionPolicyInput(name.Text!.Trim(), duration.Text!.Trim(), 1, false);
+        }
         var replication = Ui.Number(existing?.ReplicationCopies ?? 1, 1, 100);
         var isDefault = new CheckBox { IsChecked = existing?.Default ?? false, Content = "Make this the default policy" };
         var dialog = new FormDialog(creating ? "Create Retention Policy" : "Alter Retention Policy", creating ? "Create" : "Update",
@@ -41,25 +54,28 @@ public static class TickbirdDialogs
         return new RetentionPolicyInput(name.Text!.Trim(), duration.Text!.Trim(), (int)(replication.Value ?? 1), isDefault.IsChecked == true);
     }
 
-    public static async Task<UserInput?> CreateUserAsync(Window owner)
+    public static async Task<UserInput?> CreateUserAsync(Window owner, bool allowAdministrator = true)
     {
         var name = Ui.Text();
         var password = Ui.Text(password: true);
         var admin = new CheckBox { Content = "Administrator" };
-        var dialog = new FormDialog("Create User", "Create", ("User name:", name), ("Password:", password), ("", admin));
+        // A database that cannot make administrators (CrateDB) has no such checkbox.
+        var dialog = allowAdministrator
+            ? new FormDialog("Create User", "Create", ("User name:", name), ("Password:", password), ("", admin))
+            : new FormDialog("Create User", "Create", ("User name:", name), ("Password:", password));
         dialog.Validate = () => Validation.User(name.Text, password.Text);
         return await dialog.ShowAsync(owner) ? new UserInput(name.Text!.Trim(), password.Text!, admin.IsChecked == true) : null;
     }
 
     /// <summary>Returns the new administrator flag, or null when cancelled.</summary>
-    public static async Task<bool?> EditUserAsync(Window owner, InfluxDbUser user)
+    public static async Task<bool?> EditUserAsync(Window owner, DatabaseUser user)
     {
         var admin = new CheckBox { Content = "Administrator", IsChecked = user.IsAdmin };
         var dialog = new FormDialog("Edit User", "Update", ("User name:", new TextBlock { Text = user.Name }), ("", admin));
         return await dialog.ShowAsync(owner) ? admin.IsChecked == true : null;
     }
 
-    public static async Task<string?> PasswordAsync(Window owner, InfluxDbUser user)
+    public static async Task<string?> PasswordAsync(Window owner, DatabaseUser user)
     {
         var password = Ui.Text(password: true);
         var dialog = new FormDialog("Change Password", "Update", ("User name:", new TextBlock { Text = user.Name }), ("New password:", password));
@@ -67,32 +83,54 @@ public static class TickbirdDialogs
         return await dialog.ShowAsync(owner) ? password.Text : null;
     }
 
-    public static async Task<PrivilegeInput?> GrantPrivilegeAsync(Window owner, InfluxDbUser user, IEnumerable<string> databases)
+    public static async Task<PrivilegeInput?> GrantPrivilegeAsync(Window owner, DatabaseUser user, IEnumerable<string> databases)
     {
         var db = new ComboBox { ItemsSource = databases.ToList(), SelectedIndex = 0 };
         var privilege = new ComboBox
         {
-            ItemsSource = Enum.GetValues<InfluxDbPrivileges>().Where(p => p != InfluxDbPrivileges.None).ToList(),
+            ItemsSource = Enum.GetValues<DatabasePrivileges>().Where(p => p != DatabasePrivileges.None).ToList(),
             SelectedIndex = 0
         };
         var dialog = new FormDialog("Grant Privilege", "Grant",
             ("User name:", new TextBlock { Text = user.Name }), ("Database:", db), ("Privilege:", privilege));
         dialog.Validate = () => db.SelectedItem == null ? "Select a database." : null;
         return await dialog.ShowAsync(owner)
-            ? new PrivilegeInput((string)db.SelectedItem!, (InfluxDbPrivileges)privilege.SelectedItem!) : null;
+            ? new PrivilegeInput((string)db.SelectedItem!, (DatabasePrivileges)privilege.SelectedItem!) : null;
     }
 
-    public static async Task<InfluxDbPrivileges?> EditPrivilegeAsync(Window owner, string username, InfluxDbGrant grant)
+    public static async Task<DatabasePrivileges?> EditPrivilegeAsync(Window owner, string username, DatabaseGrant grant)
     {
-        var privilege = new ComboBox { ItemsSource = Enum.GetValues<InfluxDbPrivileges>().ToList(), SelectedItem = grant.Privilege };
+        var privilege = new ComboBox { ItemsSource = Enum.GetValues<DatabasePrivileges>().ToList(), SelectedItem = grant.Privilege };
         var dialog = new FormDialog("Edit Privilege", "Update",
             ("User name:", new TextBlock { Text = username }), ("Database:", new TextBlock { Text = grant.Database }), ("Privilege:", privilege));
-        return await dialog.ShowAsync(owner) ? (InfluxDbPrivileges)privilege.SelectedItem! : null;
+        return await dialog.ShowAsync(owner) ? (DatabasePrivileges)privilege.SelectedItem! : null;
     }
 
-    public static async Task<InfluxDbCqParams?> CreateContinuousQueryAsync(Window owner, InfluxDbClient client, string database)
+    public static async Task<ContinuousQueryParams?> CreateContinuousQueryAsync(Window owner, DatabaseClient client, string database)
     {
         var measurements = (await client.GetMeasurementNamesAsync(database) ?? Enumerable.Empty<string>()).ToList();
+        var profile = client.Connection.Profile;
+        if (!profile.ContinuousQueryWritesToDestination)
+        {
+            // A continuous aggregate: a named view over one table, grouped by time bucket (and tags), kept up to date.
+            var aggregateName = Ui.Text();
+            var from = new AutoCompleteBox { ItemsSource = measurements, FilterMode = AutoCompleteFilterMode.Contains };
+            var bucket = Ui.Text(watermark: "e.g. 10m, 1h, 1d");
+            var groupBy = Ui.Text(watermark: "comma-separated text columns");
+            var aggregates = new TextBox { AcceptsReturn = true, Height = 110, Text = "avg(\"value\") AS \"value\"", FontFamily = "Consolas,Menlo,monospace" };
+            var aggregateDialog = new FormDialog("Create " + profile.Terms.ContinuousQuery, "Create",
+                ("Database:", new TextBlock { Text = database }), ("Name:", aggregateName), ("Source " + profile.Terms.Measurement.ToLowerInvariant() + ":", from),
+                ("Bucket size:", bucket), ("Group by:", groupBy), ("Aggregates:", aggregates));
+            aggregateDialog.Validate = () => Validation.ContinuousQuery(aggregateName.Text, aggregateName.Text, from.Text, bucket.Text,
+                false, null, null, aggregates.Text);
+            if (!await aggregateDialog.ShowAsync(owner)) return null;
+            return new ContinuousQueryParams
+            {
+                Name = aggregateName.Text, Database = database, Source = from.Text, Destination = aggregateName.Text,
+                SubQueries = new List<string> { aggregates.Text!.Trim() }, Interval = bucket.Text,
+                FillType = InfluxDbFillTypes.Null, Tags = Validation.SplitList(groupBy.Text)
+            };
+        }
         var name = Ui.Text();
         var destination = new AutoCompleteBox { ItemsSource = measurements, FilterMode = AutoCompleteFilterMode.Contains };
         var source = new AutoCompleteBox { ItemsSource = measurements, FilterMode = AutoCompleteFilterMode.Contains };
@@ -116,7 +154,7 @@ public static class TickbirdDialogs
             !await Dialogs.ConfirmAsync(owner, "Same Source and Destination",
                 "Source is the same as the Destination. These are typically different values for a Continuous Query. Are you sure that you want to continue?"))
             return null;
-        return new InfluxDbCqParams
+        return new ContinuousQueryParams
         {
             Name = name.Text, Database = database, Destination = destination.Text, Source = source.Text,
             SubQueries = new List<string> { query.Text!.Trim() }, Interval = interval.Text,
@@ -125,7 +163,7 @@ public static class TickbirdDialogs
         };
     }
 
-    public static async Task<InfluxDbBackfillParams?> BackfillAsync(Window owner, InfluxDbClient client, string database)
+    public static async Task<BackfillParams?> BackfillAsync(Window owner, DatabaseClient client, string database)
     {
         var measurements = (await client.GetMeasurementNamesAsync(database) ?? Enumerable.Empty<string>()).ToList();
         var destination = new AutoCompleteBox { ItemsSource = measurements, FilterMode = AutoCompleteFilterMode.Contains };
@@ -144,7 +182,7 @@ public static class TickbirdDialogs
             ("From:", from.Control), ("To:", to.Control), ("SubQuery:", query));
         dialog.Validate = () => Validation.Backfill(destination.Text, source.Text, interval.Text, from.Value, to.Value, query.Text);
         if (!await dialog.ShowAsync(owner)) return null;
-        return new InfluxDbBackfillParams
+        return new BackfillParams
         {
             SubQueries = new List<string> { query.Text!.Trim() }, Destination = destination.Text, Source = source.Text,
             Interval = interval.Text, FromTime = from.Value, ToTime = to.Value, Filters = Validation.SplitList(filters.Text),
@@ -169,7 +207,7 @@ public static class TickbirdDialogs
     /// Create or edit a connection. Returns the connection to save, or null if cancelled.
     /// <paramref name="defaultGroup"/> preselects a group for a new connection.
     /// </summary>
-    public static async Task<InfluxDbConnection?> ConnectionAsync(Window owner, InfluxDbConnection? existing,
+    public static async Task<DatabaseConnection?> ConnectionAsync(Window owner, DatabaseConnection? existing,
         TickbirdSettings settings, string? defaultGroup = null)
     {
         var name = Ui.Text(existing?.Name ?? "New Connection");
@@ -183,42 +221,71 @@ public static class TickbirdDialogs
         groupRow.Children.Add(group);
         groupRow.Children.Add(newGroup);
         string? SelectedGroup() => group.SelectedItem is string g && g != NoGroup ? g : null;
-        var server = new ComboBox { ItemsSource = new[] { "InfluxDB 1.x", "InfluxDB 3.x" }, SelectedIndex = existing?.ServerVersion == InfluxDbServerVersion.InfluxDb3 ? 1 : 0 };
+        // The databases come from the registry, so a new database appears here without any change to this dialog.
+        var profiles = DatabaseProfiles.All;
+        var server = new ComboBox
+        {
+            ItemsSource = profiles.Select(p => p.DisplayName).ToList(),
+            SelectedIndex = Math.Max(0, profiles.ToList().FindIndex(p => p.Kind == (existing?.Kind ?? DatabaseKind.InfluxDb1)))
+        };
         var host = Ui.Text(existing?.Host ?? "localhost");
-        var port = Ui.Number(existing == null || existing.Port == 0 ? 8086 : existing.Port, 1, 65535);
+        var port = Ui.Number(existing == null || existing.Port == 0 ? profiles[0].DefaultPort : existing.Port, 1, 65535);
         var database = Ui.Text(existing?.Database);
         var username = Ui.Text(existing?.Username);
-        var secret = Ui.Text(existing?.ServerVersion == InfluxDbServerVersion.InfluxDb3 ? existing.Token : existing?.Password, password: true);
+        var secret = Ui.Text(existing != null && existing.Profile.Authentication == AuthenticationStyle.Token ? existing.Token : existing?.Password, password: true);
         var useSsl = new CheckBox { IsChecked = existing?.UseSsl ?? false, Content = "Use SSL" };
         var usernameLabel = new TextBlock { Text = "Username:", VerticalAlignment = VerticalAlignment.Center };
         var secretLabel = new TextBlock { Text = "Password:", VerticalAlignment = VerticalAlignment.Center };
 
-        bool V3() => server.SelectedIndex == 1;
+        DatabaseProfile Selected() => profiles[Math.Max(0, server.SelectedIndex)];
+        var shownProfile = Selected();
+        ConnectionDialogLayout.Parts? parts = null;
         void UpdateFields(bool updatePort)
         {
-            username.IsVisible = !V3();
-            secretLabel.Text = V3() ? "API Token" : "Password";
-            if (!updatePort) return;
-            if (V3() && (int)(port.Value ?? 0) == 8086) port.Value = 8181;
-            if (!V3() && (int)(port.Value ?? 0) == 8181) port.Value = 8086;
+            var profile = Selected();
+            var token = profile.Authentication == AuthenticationStyle.Token;
+            username.IsVisible = !token;
+            secretLabel.Text = token ? "API Token" : "Password";
+            // What changes with the database: the Database field (CrateDB has one database), a note, a starting user.
+            database.IsVisible = profile.UsesDatabaseName;
+            if (parts != null)
+            {
+                parts.DatabaseLabel.IsVisible = profile.UsesDatabaseName;
+                parts.Hint.Text = profile.ConnectionHint;
+                parts.Hint.IsVisible = !string.IsNullOrWhiteSpace(profile.ConnectionHint);
+            }
+            if (updatePort)
+            {
+                var previous = shownProfile.DefaultUsername;
+                if (string.IsNullOrWhiteSpace(username.Text) || string.Equals(username.Text, previous, StringComparison.Ordinal))
+                    username.Text = profile.DefaultUsername;
+            }
+            // Move the port to the new database's default, unless the user typed another one.
+            if (updatePort && (int)(port.Value ?? 0) == shownProfile.DefaultPort) port.Value = profile.DefaultPort;
+            shownProfile = profile;
         }
         server.SelectionChanged += (_, _) => UpdateFields(true);
 
-        InfluxDbConnection Build(string id) => new(id, name.Text ?? "", host.Text ?? "", (ushort)(port.Value ?? 8086),
-            V3() ? null : username.Text, V3() ? null : secret.Text, useSsl.IsChecked == true,
-            string.IsNullOrWhiteSpace(database.Text) ? null : database.Text,
-            V3() ? InfluxDbServerVersion.InfluxDb3 : InfluxDbServerVersion.InfluxDb1, V3() ? secret.Text : null)
+        DatabaseConnection Build(string id)
         {
-            Group = SelectedGroup()
-        };
+            var profile = Selected();
+            var token = profile.Authentication == AuthenticationStyle.Token;
+            return new DatabaseConnection(id, name.Text ?? "", host.Text ?? "", (ushort)(port.Value ?? profile.DefaultPort),
+                token ? null : username.Text, token ? null : secret.Text, useSsl.IsChecked == true,
+                profile.UsesDatabaseName && !string.IsNullOrWhiteSpace(database.Text) ? database.Text : null, InfluxDbServerVersion.InfluxDb1, token ? secret.Text : null)
+            {
+                Group = SelectedGroup(),
+                Kind = profile.Kind
+            };
+        }
 
         var dialog = new FormDialog(existing == null ? "Create Connection" : "Edit Connection", existing == null ? "Create" : "Save",
             ("Name:", name), ("Group:", groupRow), ("Server:", server), ("Host:", host), ("Port:", port), ("Database:", database),
             ("Username:", username), ("Password:", secret), ("", useSsl));
-        ConnectionDialogLayout.Apply(dialog, existing == null, name, groupRow, server, host, port, database,
+        parts = ConnectionDialogLayout.Apply(dialog, existing == null, name, groupRow, server, host, port, database,
             username, usernameLabel, secret, secretLabel, useSsl);
-        dialog.Validate = () => string.IsNullOrWhiteSpace(name.Text) ? "Connection name cannot be blank."
-            : string.IsNullOrWhiteSpace(host.Text) ? "Host cannot be blank." : null;
+        // The name and host are always required; the chosen database may add its own checks (CrateDB's port 4200 is HTTP).
+        dialog.Validate = () => Selected().Validate(Build(existing?.Id ?? "validate"));
         UpdateFields(false);
 
         // The new group is only saved when the connection is saved.
@@ -236,7 +303,9 @@ public static class TickbirdDialogs
         {
             try
             {
-                var client = InfluxDbClientFactory.Create(Build(existing?.Id ?? Guid.NewGuid().ToString()));
+                var problem = Selected().Validate(Build(existing?.Id ?? "validate"));
+                if (problem != null) throw new InvalidOperationException(problem);
+                var client = DatabaseClientFactory.Create(Build(existing?.Id ?? Guid.NewGuid().ToString()));
                 if (!string.IsNullOrWhiteSpace(client.Connection.Database)) await client.GetMeasurementNamesAsync(client.Connection.Database);
                 else await client.GetDatabaseNamesAsync();
                 await Dialogs.ShowMessageAsync(dialog, "Success", "Connection Successful!");
@@ -249,10 +318,12 @@ public static class TickbirdDialogs
         {
             try
             {
-                var client = InfluxDbClientFactory.Create(Build(existing?.Id ?? Guid.NewGuid().ToString()));
+                var problem = Selected().Validate(Build(existing?.Id ?? "validate"));
+                if (problem != null) throw new InvalidOperationException(problem);
+                var client = DatabaseClientFactory.Create(Build(existing?.Id ?? Guid.NewGuid().ToString()));
                 var response = await client.PingAsync();
                 if (!response.Success) throw new Exception("There was an error connecting to the server.");
-                await Dialogs.ShowMessageAsync(dialog, "Pong", $"Response Time: {response.ResponseTime.TotalMilliseconds:0} ms\nInfluxDB Version: {response.Version}");
+                await Dialogs.ShowMessageAsync(dialog, "Pong", $"Response Time: {response.ResponseTime.TotalMilliseconds:0} ms\n{Selected().VersionLabel}: {response.Version}");
             }
             catch (Exception ex) { await Dialogs.ShowMessageAsync(dialog, "Failure", ex.Message); }
         };
@@ -275,7 +346,7 @@ public static class TickbirdDialogs
         panel.Children.Add(new TextBlock
         {
             Text = "Browse, query, chart and map your time series data, and manage servers, users and retention " +
-                   "policies. Supports InfluxDB 1.x (InfluxQL) and InfluxDB 3.x (SQL), with more databases planned.",
+                   "policies. Supports InfluxDB 1.x (InfluxQL), InfluxDB 3.x (SQL), TimescaleDB and CrateDB, with more databases planned.",
             TextWrapping = Avalonia.Media.TextWrapping.Wrap, Opacity = 0.85
         });
         panel.Children.Add(new TextBlock { Text = "Version " + version, Margin = new Thickness(0, 6, 0, 0) });

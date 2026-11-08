@@ -234,7 +234,7 @@ public static class MapTrackBuilder
     private const int SampleRows = 500;
     private const int MaxNumericCategories = 8;
 
-    public static MapData Build(IReadOnlyList<InfluxDbSeries> sources, MapOptions options)
+    public static MapData Build(IReadOnlyList<ResultSeries> sources, MapOptions options)
     {
         var columns = new List<string>();
         foreach (var source in sources)
@@ -403,7 +403,7 @@ public static class MapTrackBuilder
     public const int MaxLayers = 64;
 
     /// <summary>Column index of each condition in this result: -1 when missing, -2 when the condition is incomplete.</summary>
-    private static int[] ConditionColumns(InfluxDbSeries source, List<MapCondition> conditions) =>
+    private static int[] ConditionColumns(ResultSeries source, List<MapCondition> conditions) =>
         conditions.Select(c => c.IsComplete ? IndexOf(source, c.Column!) : -2).ToArray();
 
     /// <summary>True when the row meets every complete condition (incomplete ones are ignored).</summary>
@@ -419,7 +419,7 @@ public static class MapTrackBuilder
     }
 
     /// <summary>Distinct values of a column (in order of appearance), for "a layer per value".</summary>
-    public static IReadOnlyList<string> DistinctValues(IReadOnlyList<InfluxDbSeries> sources, string column, int max = 24)
+    public static IReadOnlyList<string> DistinctValues(IReadOnlyList<ResultSeries> sources, string column, int max = 24)
     {
         var values = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -564,7 +564,7 @@ public static class MapTrackBuilder
         return null;
     }
 
-    private static bool IsCoordinateColumn(IReadOnlyList<InfluxDbSeries> sources, string column)
+    private static bool IsCoordinateColumn(IReadOnlyList<ResultSeries> sources, string column)
     {
         var seen = 0;
         foreach (var source in sources)
@@ -583,7 +583,7 @@ public static class MapTrackBuilder
         return seen > 0;
     }
 
-    private static bool IsTextColumn(IReadOnlyList<InfluxDbSeries> sources, string column)
+    private static bool IsTextColumn(IReadOnlyList<ResultSeries> sources, string column)
     {
         var seen = 0;
         foreach (var source in sources)
@@ -601,7 +601,7 @@ public static class MapTrackBuilder
         return seen > 0;
     }
 
-    private static string SourceLabel(InfluxDbSeries source, bool showName, int sourceCount)
+    private static string SourceLabel(ResultSeries source, bool showName, int sourceCount)
     {
         if (sourceCount <= 1) return source.Tags.Count > 0 ? string.Join(", ", source.Tags.Select(t => $"{t.Key}={t.Value}")) : "";
         var parts = source.Tags.Select(t => $"{t.Key}={t.Value}").ToList();
@@ -609,7 +609,7 @@ public static class MapTrackBuilder
         return parts.Count > 0 ? string.Join(", ", parts) : source.Name ?? "";
     }
 
-    private static int IndexOf(InfluxDbSeries source, string column)
+    private static int IndexOf(ResultSeries source, string column)
     {
         for (var i = 0; i < source.Columns.Count; i++)
             if (Same(source.Columns[i], column)) return i;

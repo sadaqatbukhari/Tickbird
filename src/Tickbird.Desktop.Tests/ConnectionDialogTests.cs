@@ -19,7 +19,7 @@ public sealed class ConnectionDialogTests
         owner.Show();
         try
         {
-            var existing = new InfluxDbConnection("test", "New Connection", "192.168.102.31", 8086,
+            var existing = new DatabaseConnection("test", "New Connection", "192.168.102.31", 8086,
                 "user", "secret", true, "db") { Group = "DEV" };
             var pending = TickbirdDialogs.ConnectionAsync(owner, existing, new TickbirdSettings { Groups = { "DEV" } });
             if (pending.IsFaulted) await pending;

@@ -10,8 +10,8 @@ public class TagValueCompletionTests
         var p = new CompletionProvider();
         p.SetSchema(new[]
         {
-            new InfluxDbMeasurementSchema("cpu", new[] { new InfluxDbFieldKey("usage", "float") }, new[] { "host", "region" }),
-            new InfluxDbMeasurementSchema("mem", new[] { new InfluxDbFieldKey("used", "float") }, new[] { "host" }),
+            new MeasurementSchema("cpu", new[] { new FieldKey("usage", "float") }, new[] { "host", "region" }),
+            new MeasurementSchema("mem", new[] { new FieldKey("used", "float") }, new[] { "host" }),
         });
         return p;
     }
@@ -79,7 +79,7 @@ public class TagValueCompletionTests
     {
         var p = Provider();
         p.SetTagValues("cpu", "host", Enumerable.Range(0, 5000).Select(i => "h" + i));
-        Assert.Equal(CompletionProvider.MaxTagValues, p.GetTagValueItems(null, new[] { "cpu" }, "host").Count);
+        Assert.Equal(CompletionProvider.MaxTagValues, p.GetTagValueItems((InfluxDbServerVersion?)null, new[] { "cpu" }, "host").Count);
     }
 
     [Fact]

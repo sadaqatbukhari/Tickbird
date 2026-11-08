@@ -52,7 +52,7 @@ public sealed class TickbirdSettings
     public string TimeFormat { get; set; } = TimeFormat12Hour;
     public string DateFormat { get; set; } = DateFormatSystem;
     public bool AllowUntrustedSsl { get; set; }
-    public List<InfluxDbConnection> Connections { get; set; } = new();
+    public List<DatabaseConnection> Connections { get; set; } = new();
 
     /// <summary>
     /// Connection groups (for example PROD, DEV). Saved separately from the connections so a
@@ -147,7 +147,7 @@ public sealed class TickbirdSettings
     }
 
     /// <summary>Adds connections not already present (matched by ID); returns how many were added.</summary>
-    public int MergeConnections(IEnumerable<InfluxDbConnection> incoming)
+    public int MergeConnections(IEnumerable<DatabaseConnection> incoming)
     {
         var added = 0;
         foreach (var connection in incoming)

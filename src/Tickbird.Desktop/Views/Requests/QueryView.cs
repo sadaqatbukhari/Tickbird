@@ -28,12 +28,20 @@ public sealed class QueryView : RequestView
         // SQL Server Management Studio look: Consolas, black text, teal line numbers.
         FontFamily = new FontFamily("Consolas,Cascadia Mono,Menlo,monospace"),
         FontSize = 13,
-        MinHeight = 120,
+        // No fixed MinHeight: the editor must fit whatever room its card has, or the card clips it and hides its scrollbar.
+        // The minimum sizes are on the grid rows below.
         Background = Brushes.White,
         Foreground = Brushes.Black,
         LineNumbersForeground = Brush.Parse("#2B91AF"),
         HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+        VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
     };
+    /// <summary>The least height of the editor row: its card padding plus a few lines.</summary>
+    public const double EditorMinHeight = 80;
+
+    /// <summary>The least height of the results row: tabs, a header and a few rows.</summary>
+    public const double ResultsMinHeight = 140;
+
     private readonly TabControl results = new();
     private readonly TextBlock summary = new()
     {
@@ -80,7 +88,18 @@ public sealed class QueryView : RequestView
                 completionWindow.Close();
         }, Avalonia.Threading.DispatcherPriority.Background);
 
-        var split = new Grid { RowDefinitions = new RowDefinitions("2*,10,3*"), Margin = new Thickness(10) };
+        // The editor and the results each keep room for a few lines / rows, however far the splitter is dragged.
+        var split = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition(2, GridUnitType.Star) { MinHeight = EditorMinHeight },
+                new RowDefinition(10, GridUnitType.Pixel),
+                new RowDefinition(3, GridUnitType.Star) { MinHeight = ResultsMinHeight },
+            },
+            Margin = new Thickness(10),
+            ClipToBounds = true
+        };
         var splitter = new GridSplitter
         {
             HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
@@ -133,7 +152,7 @@ public sealed class QueryView : RequestView
     public bool IsDirty => !string.Equals(editor.Text ?? "", savedText ?? "", StringComparison.Ordinal);
 
     /// <summary>Loads the whole database schema (shared cache); set by the main window.</summary>
-    public Func<Task<IReadOnlyList<InfluxDbMeasurementSchema>>>? SchemaLoader { get; set; }
+    public Func<Task<IReadOnlyList<MeasurementSchema>>>? SchemaLoader { get; set; }
 
     /// <summary>Loads the values of a tag in a measurement (shared cache); set by the main window.</summary>
     public Func<string, string, Task<IReadOnlyList<string>>>? TagValueLoader { get; set; }
@@ -226,10 +245,10 @@ public sealed class QueryView : RequestView
         running = cancel;
         stopRequested = false;
         SetRunning(true);
-        List<InfluxDbSeries> allResults;
+        List<ResultSeries> allResults;
         try
         {
-            allResults = ((await Client.QueryAsync(Database, query, cancel.Token)) ?? Enumerable.Empty<InfluxDbSeries>()).ToList();
+            allResults = ((await Client.QueryAsync(Database, query, cancel.Token)) ?? Enumerable.Empty<ResultSeries>()).ToList();
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
@@ -492,7 +511,7 @@ public sealed class QueryView : RequestView
             current = after;
         }
 
-        var items = completion.GetTagValueItems(Client?.Connection.ServerVersion, sources, current.Tag).ToList();
+        var items = completion.GetTagValueItems(Client?.Connection.Profile, sources, current.Tag).ToList();
         var typed = current.Context.Prefix;
         if (typed.Length > 0) items = items.Where(i => i.Text.Contains(typed, StringComparison.OrdinalIgnoreCase)).ToList();
         if (items.Count == 0) return;
@@ -566,7 +585,7 @@ public sealed class QueryView : RequestView
         var text = editor.Document.GetText(0, caret);
         var start = CompletionTrigger.WordStart(text, caret);
         var prefix = text[start..].TrimStart('"');
-        var items = completion.GetItems(Client?.Connection.ServerVersion, editor.Text, text[..start]).ToList();
+        var items = completion.GetItems(Client?.Connection.Profile, editor.Text, text[..start]).ToList();
         if (prefix.Length > 0)
         {
             // Open only when something matches what was typed.

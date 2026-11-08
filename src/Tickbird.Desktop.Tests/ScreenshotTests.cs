@@ -27,7 +27,7 @@ public class ScreenshotTests
         var window = new MainWindow(app, showConnectionsOnStart: false) { Width = 1100, Height = 700 };
         var vm = (MainWindowViewModel)window.DataContext!;
 
-        var connection = new InfluxDbConnection("1", "Local InfluxDB", "localhost", 8086, "u", "p");
+        var connection = new DatabaseConnection("1", "Local InfluxDB", "localhost", 8086, "u", "p");
         var node = new TreeNodeViewModel(connection.Name, NodeKind.Connection, null, connection);
         var db = new TreeNodeViewModel("telegraf", NodeKind.Database, node);
         db.Children.Add(new TreeNodeViewModel("cpu", NodeKind.Measurement, db));
@@ -40,7 +40,7 @@ public class ScreenshotTests
         var query = new QueryView { Client = null!, Database = "telegraf", EditorText = "SELECT mean(\"usage\") FROM \"cpu\" WHERE time > now() - 5m GROUP BY time(1m) -- sample" };
         vm.AddTab(new TabViewModel("q", "Local InfluxDB.telegraf", TabKind.Query, "1", "RunQuery", query));
         var results = new ResultsView();
-        results.Show(new InfluxDbSeries("cpu", new List<string> { "time", "host", "usage" }, new Dictionary<string, string>(),
+        results.Show(new ResultSeries("cpu", new List<string> { "time", "host", "usage" }, new Dictionary<string, string>(),
             new List<IList<object>>
             {
                 new List<object> { "2024-01-02T03:04:05Z", "web-1", 41.5 },

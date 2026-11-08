@@ -23,9 +23,9 @@ public sealed class ManageConnectionsWindow : Window
 
     private const string AllGroupsLabel = "All groups";
 
-    public event Action<InfluxDbConnection>? ConnectionCreated;
-    public event Action<InfluxDbConnection>? ConnectionUpdated;
-    public event Action<InfluxDbConnection>? ConnectionRemoved;
+    public event Action<DatabaseConnection>? ConnectionCreated;
+    public event Action<DatabaseConnection>? ConnectionUpdated;
+    public event Action<DatabaseConnection>? ConnectionRemoved;
 
     public ManageConnectionsWindow(TickbirdApp app)
     {
@@ -139,7 +139,7 @@ public sealed class ManageConnectionsWindow : Window
         finally { updatingFilter = false; }
     }
 
-    private bool MatchesFilter(InfluxDbConnection connection) => groupFilter.SelectedItem switch
+    private bool MatchesFilter(DatabaseConnection connection) => groupFilter.SelectedItem switch
     {
         TickbirdDialogs.NoGroup => TickbirdSettings.NormalizeGroup(connection.Group) == null,
         string g when g != AllGroupsLabel => TickbirdSettings.SameGroup(connection.Group, g),
@@ -171,7 +171,7 @@ public sealed class ManageConnectionsWindow : Window
         button.Classes.Add("connectionAction");
     }
 
-    private InfluxDbConnection? Selected => (grid.SelectedItem as GridRow)?.Tag as InfluxDbConnection;
+    private DatabaseConnection? Selected => (grid.SelectedItem as GridRow)?.Tag as DatabaseConnection;
 
     private async Task Guard(Func<Task> action)
     {
@@ -189,7 +189,7 @@ public sealed class ManageConnectionsWindow : Window
             .Select(c => new GridRow(new[]
             {
                 c.Name, TickbirdSettings.NormalizeGroup(c.Group) ?? "",
-                c.ServerVersion == InfluxDbServerVersion.InfluxDb3 ? "InfluxDB 3.x" : "InfluxDB 1.x",
+                c.Profile.DisplayName,
                 c.Host + ":" + c.Port, app.IsConnected(c) ? GridFactory.CheckMark : null
             }, c)).ToList();
         grid.ItemsSource = rows;
@@ -225,7 +225,7 @@ public sealed class ManageConnectionsWindow : Window
         if (updated == null) return;
         existing.Name = updated.Name; existing.Host = updated.Host; existing.Port = updated.Port;
         existing.Database = updated.Database; existing.Username = updated.Username; existing.Password = updated.Password;
-        existing.UseSsl = updated.UseSsl; existing.ServerVersion = updated.ServerVersion; existing.Token = updated.Token;
+        existing.UseSsl = updated.UseSsl; existing.ServerVersion = updated.ServerVersion; existing.Kind = updated.Kind; existing.Token = updated.Token;
         existing.Group = app.Settings.EnsureGroup(updated.Group);
         app.Save();
         ConnectionUpdated?.Invoke(existing);
@@ -245,5 +245,5 @@ public sealed class ManageConnectionsWindow : Window
     }
 
     /// <summary>Shows the dialog; resolves to the connection the user chose to connect to, if any.</summary>
-    public async Task<InfluxDbConnection?> ShowAsync(Window owner) => await ShowDialog<InfluxDbConnection?>(owner);
+    public async Task<DatabaseConnection?> ShowAsync(Window owner) => await ShowDialog<DatabaseConnection?>(owner);
 }

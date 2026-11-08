@@ -191,8 +191,8 @@ public sealed class ChartView : UserControl
     private readonly StackPanel hoverRows = new() { Spacing = 2 };
     private readonly Border hover;
 
-    private InfluxDbSeries? current;
-    private IReadOnlyList<InfluxDbSeries>? all;
+    private ResultSeries? current;
+    private IReadOnlyList<ResultSeries>? all;
     private ChartData? data;
     private ScottPlot.Plottables.VerticalLine? hoverLine;
     private int renderedVersion = -1;
@@ -299,7 +299,7 @@ public sealed class ChartView : UserControl
     public ChartData? Data => data;
 
     /// <summary>Sets the result to chart. <paramref name="allResults"/> are the query's other result sets, for "combine".</summary>
-    public void SetResults(InfluxDbSeries result, IReadOnlyList<InfluxDbSeries>? allResults)
+    public void SetResults(ResultSeries result, IReadOnlyList<ResultSeries>? allResults)
     {
         current = result;
         all = allResults;
@@ -337,7 +337,7 @@ public sealed class ChartView : UserControl
         Redraw();
     }
 
-    private IReadOnlyList<InfluxDbSeries> Sources() =>
+    private IReadOnlyList<ResultSeries> Sources() =>
         settings.CombineResults && all is { Count: > 1 } ? all : new[] { current! };
 
     private void BindToolbar(ChartData chart, int sourceCount)

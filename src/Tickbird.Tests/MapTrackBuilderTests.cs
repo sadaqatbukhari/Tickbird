@@ -7,7 +7,7 @@ public class MapTrackBuilderTests
 {
     private static DateTime T(int s) => new(2026, 10, 21, 7, 11, s, DateTimeKind.Utc);
 
-    private static InfluxDbSeries Gps(params (double Lat, double Lon, object? State)[] rows) =>
+    private static ResultSeries Gps(params (double Lat, double Lon, object? State)[] rows) =>
         new("gps", new List<string> { "time", "latitude", "longitude", "state" }, new Dictionary<string, string>(),
             rows.Select((r, i) => (IList<object>)new List<object> { T(i), r.Lat, r.Lon, r.State! }).ToList());
 
@@ -26,7 +26,7 @@ public class MapTrackBuilderTests
     [Fact]
     public void DetectsShortNames_AndNumericStrings()
     {
-        var series = new InfluxDbSeries("p", new List<string> { "time", "gps_lat", "gps_lng" }, new Dictionary<string, string>(),
+        var series = new ResultSeries("p", new List<string> { "time", "gps_lat", "gps_lng" }, new Dictionary<string, string>(),
             new List<IList<object>> { new List<object> { T(0), "52.5", "13.4" }, new List<object> { T(1), "52.6", "13.5" } });
         var data = MapTrackBuilder.Build(new[] { series }, new MapOptions());
         Assert.Equal("gps_lat", data.LatitudeColumn);
@@ -84,7 +84,7 @@ public class MapTrackBuilderTests
     [Fact]
     public void ExplicitBindingWins_AndMissingColumnsExplain()
     {
-        var series = new InfluxDbSeries("m", new List<string> { "time", "a", "b" }, new Dictionary<string, string>(),
+        var series = new ResultSeries("m", new List<string> { "time", "a", "b" }, new Dictionary<string, string>(),
             new List<IList<object>> { new List<object> { T(0), 10.0, 20.0 } });
         var auto = MapTrackBuilder.Build(new[] { series }, new MapOptions());
         Assert.Null(auto.LatitudeColumn);
@@ -96,7 +96,7 @@ public class MapTrackBuilderTests
         Assert.Equal(10.0, bound.Tracks[0].Points[0].Latitude);
     }
 
-    private static InfluxDbSeries Machine() =>
+    private static ResultSeries Machine() =>
         new("gps", new List<string> { "time", "lat", "lon", "state", "speed" }, new Dictionary<string, string>(),
             new List<IList<object>>
             {
@@ -155,7 +155,7 @@ public class MapTrackBuilderTests
         Assert.True(If("on", MapConditionOperator.Equals, "true").Matches(true));
     }
 
-    private static InfluxDbSeries Harvester() =>
+    private static ResultSeries Harvester() =>
         new("gps", new List<string> { "time", "lat", "lon", "operatingmode", "depthguidance", "bunkerunload" }, new Dictionary<string, string>(),
             new List<IList<object>>
             {

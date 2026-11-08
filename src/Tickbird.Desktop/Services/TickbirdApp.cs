@@ -18,7 +18,7 @@ public sealed class TickbirdApp
     {
         this.store = store;
         Settings = store.Load();
-        InfluxDbClientFactory.AllowUntrustedSsl = () => Settings.AllowUntrustedSsl;
+        DatabaseClientFactory.AllowUntrustedSsl = () => Settings.AllowUntrustedSsl;
     }
 
     public TickbirdSettings Settings { get; private set; }
@@ -30,7 +30,7 @@ public sealed class TickbirdApp
     /// <summary>Saved query snippets (query-snippets.json next to the settings file).</summary>
     public QuerySnippets Snippets => snippets ??= new QuerySnippets(QuerySnippets.PathNextTo(store.FilePath));
     private QuerySnippets? snippets;
-    public List<InfluxDbClient> ActiveClients { get; } = new();
+    public List<DatabaseClient> ActiveClients { get; } = new();
     public string SettingsFilePath => store.FilePath;
 
     public ResultFormatter Formatter => new(Settings.DateFormat, Settings.TimeFormat);
@@ -43,25 +43,25 @@ public sealed class TickbirdApp
         Save();
     }
 
-    public InfluxDbClient? GetClient(InfluxDbConnection connection) =>
+    public DatabaseClient? GetClient(DatabaseConnection connection) =>
         ActiveClients.FirstOrDefault(c => c.Connection.Id == connection.Id);
 
-    public InfluxDbClient Connect(InfluxDbConnection connection)
+    public DatabaseClient Connect(DatabaseConnection connection)
     {
         var existing = GetClient(connection);
         if (existing != null) return existing;
-        var client = InfluxDbClientFactory.Create(connection);
+        var client = DatabaseClientFactory.Create(connection);
         ActiveClients.Add(client);
         return client;
     }
 
-    public void Disconnect(InfluxDbConnection connection)
+    public void Disconnect(DatabaseConnection connection)
     {
         ActiveClients.RemoveAll(c => c.Connection.Id == connection.Id);
         Schemas.Invalidate(connection.Id);
     }
 
-    public bool IsConnected(InfluxDbConnection connection) => GetClient(connection) != null;
+    public bool IsConnected(DatabaseConnection connection) => GetClient(connection) != null;
 
     public CompletionProvider CreateCompletionProvider() => new();
 
@@ -69,23 +69,23 @@ public sealed class TickbirdApp
     public SchemaCache Schemas { get; } = new();
 
     /// <summary>The database schema for IntelliSense: loaded once (in the background when the server connects) and cached.</summary>
-    public Task<IReadOnlyList<InfluxDbMeasurementSchema>> GetSchemaAsync(InfluxDbConnection connection, string database)
+    public Task<IReadOnlyList<MeasurementSchema>> GetSchemaAsync(DatabaseConnection connection, string database)
     {
         var client = Connect(connection);
         return Schemas.GetAsync(connection.Id, database, () => client.GetDatabaseSchemaAsync(database));
     }
 
     /// <summary>Values of a tag in a measurement, loaded once when first needed and kept with the tag.</summary>
-    public Task<IReadOnlyList<string>> GetTagValuesAsync(InfluxDbConnection connection, string database, string measurement, string tag)
+    public Task<IReadOnlyList<string>> GetTagValuesAsync(DatabaseConnection connection, string database, string measurement, string tag)
     {
         var client = Connect(connection);
         return Schemas.GetTagValuesAsync(connection.Id, database, measurement, tag, async () =>
-            (IReadOnlyList<string>)(await client.GetTagValuesAsync(database, measurement, tag) ?? Enumerable.Empty<InfluxDbTagValue>())
+            (IReadOnlyList<string>)(await client.GetTagValuesAsync(database, measurement, tag) ?? Enumerable.Empty<TagValue>())
                 .Select(v => v.Value).Where(v => v != null).ToList());
     }
 
     /// <summary>Starts loading schemas in the background; failures are ignored here and retried when a query tab asks.</summary>
-    public void PrefetchSchemas(InfluxDbConnection connection, IEnumerable<string> databases)
+    public void PrefetchSchemas(DatabaseConnection connection, IEnumerable<string> databases)
     {
         foreach (var database in databases)
             if (!string.IsNullOrWhiteSpace(database)) _ = GetSchemaAsync(connection, database).ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);

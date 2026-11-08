@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Tickbird.Core.Data;
+using Tickbird.Core.Providers;
 using Tickbird.Core.Navigation;
 using Tickbird.Core.Settings;
 
@@ -10,7 +11,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private TreeNodeViewModel? selectedNode;
     private TabViewModel? selectedTab;
     private string status = "";
-    private CommandAvailability commands = CommandAvailability.For(NodeKind.None, null, null, false, false);
+    private CommandAvailability commands = CommandAvailability.For(NodeKind.None, null, (DatabaseProfile?)null, false, false);
 
     public ObservableCollection<TreeNodeViewModel> Nodes { get; } = new();
     public ObservableCollection<TabViewModel> Tabs { get; } = new();
@@ -81,9 +82,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     public void UpdateCommands()
     {
         var node = SelectedNode;
-        InfluxDbServerVersion? version = null;
-        if (node != null && node.HasConnection) version = node.Connection.ServerVersion;
-        Commands = CommandAvailability.For(node?.Kind ?? NodeKind.None, node?.Name, version,
+        DatabaseProfile? profile = null;
+        if (node != null && node.HasConnection) profile = node.Connection.Profile;
+        Commands = CommandAvailability.For(node?.Kind ?? NodeKind.None, node?.Name, profile,
             SelectedTab?.IsRequest == true, SelectedTab?.IsQuery == true);
     }
 
@@ -100,7 +101,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     public static string NewQueryTabId() => TabIdentity.NewQuery();
 
     /// <summary>Id for the Show Queries tab: one per connection, keyed by connection ID (not display name).</summary>
-    public static string ShowQueriesTabId(InfluxDbConnection connection) => TabIdentity.ShowQueries(connection.Id);
+    public static string ShowQueriesTabId(DatabaseConnection connection) => TabIdentity.ShowQueries(connection.Id);
 
     /// <summary>Selects the existing tab with this ID and returns true; otherwise returns false.</summary>
     public bool FocusExisting(string id)

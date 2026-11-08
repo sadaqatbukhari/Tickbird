@@ -15,7 +15,10 @@ internal static class ConnectionDialogLayout
     private static readonly IBrush Muted = Brush.Parse("#7284A5");
     private static readonly IBrush Blue = Brush.Parse("#176FC1");
 
-    internal static void Apply(FormDialog dialog, bool creating, TextBox name, Control group,
+    /// <summary>The parts of the dialog that change with the chosen database.</summary>
+    internal sealed record Parts(TextBlock DatabaseLabel, TextBlock Hint);
+
+    internal static Parts Apply(FormDialog dialog, bool creating, TextBox name, Control group,
         ComboBox server, TextBox host, NumericUpDown port, TextBox database, TextBox username,
         TextBlock usernameLabel, TextBox secret, TextBlock secretLabel, CheckBox useSsl)
     {
@@ -83,7 +86,14 @@ internal static class ConnectionDialogLayout
         address.Children.Add(portField);
         host.VerticalAlignment = VerticalAlignment.Bottom;
         AddRow(serverFields, Label("Host"), address);
-        AddRow(serverFields, Label("Database"), database);
+        var databaseLabel = Label("Database");
+        databaseLabel.Name = "ConnectionDatabaseLabel";
+        AddRow(serverFields, databaseLabel, database);
+        var hint = new TextBlock
+        {
+            Name = "ConnectionHint", FontSize = 10.5, Foreground = Muted, TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 8, 0, 0), IsVisible = false
+        };
 
         var auth = Fields();
         usernameLabel.Text = "Username";
@@ -114,10 +124,11 @@ internal static class ConnectionDialogLayout
         generalHeading.Padding = new Thickness(0);
         var body = new StackPanel { Margin = new Thickness(24, 18, 24, 20), Children =
         {
-            generalHeading, general, Section("SERVER"), serverFields,
+            generalHeading, general, Section("SERVER"), serverFields, hint,
             Section("AUTHENTICATION"), auth, ssl
         } };
         dialog.SetBody(body);
+        return new Parts(databaseLabel, hint);
     }
 
     internal static object ActionContent(string text, string geometry)

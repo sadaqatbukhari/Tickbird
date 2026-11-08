@@ -102,7 +102,7 @@ public abstract class RequestView : UserControl
         Background = TickbirdTheme.Canvas;
     }
 
-    public InfluxDbClient Client { get; set; } = null!;
+    public DatabaseClient Client { get; set; } = null!;
     public string? Database { get; set; }
 
     /// <summary>Loads or reloads the tab's data.</summary>

@@ -28,7 +28,7 @@ public sealed class QueryCancellationTests : IDisposable
         foreach (var client in accepted.ToList()) client.Dispose();
     }
 
-    private InfluxDbClient Client() => InfluxDbClientFactory.Create(new InfluxDbConnection(
+    private DatabaseClient Client() => DatabaseClientFactory.Create(new DatabaseConnection(
         "t", "silent", "127.0.0.1", (ushort)((IPEndPoint)silentServer.LocalEndpoint).Port, null, null, useSsl: false));
 
     [Fact]

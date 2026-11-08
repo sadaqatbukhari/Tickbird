@@ -6,7 +6,7 @@ namespace Tickbird.Tests;
 
 public class RulesTests
 {
-    private static InfluxDbRetentionPolicy Policy(string name, bool isDefault = false) =>
+    private static RetentionPolicy Policy(string name, bool isDefault = false) =>
         new() { Name = name, Duration = "1d", ReplicationCopies = 1, Default = isDefault };
 
     [Theory]

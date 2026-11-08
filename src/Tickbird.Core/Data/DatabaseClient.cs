@@ -8,7 +8,7 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// Base class for concrete implentnation to InfluxDB clients.
     /// </summary>
-    public abstract class InfluxDbClient
+    public abstract class DatabaseClient
     {
         #region Fields
 
@@ -19,7 +19,7 @@ namespace Tickbird.Core.Data
         /// <summary>
         /// Gets the InfluxDB connection configuration used by the client.
         /// </summary>
-        public InfluxDbConnection Connection { get; private set; }
+        public DatabaseConnection Connection { get; private set; }
 
         #endregion Properties
 
@@ -29,7 +29,7 @@ namespace Tickbird.Core.Data
         /// Creates an InfluxDB client using the given InfluxDB connection information.
         /// </summary>
         /// <param name="connection">The InfluxDB connection configuration to use with the client.</param>
-        public InfluxDbClient(InfluxDbConnection connection)
+        public DatabaseClient(DatabaseConnection connection)
         {
             if (connection == null) throw new ArgumentNullException("connection");
             Connection = connection;
@@ -52,14 +52,14 @@ namespace Tickbird.Core.Data
         /// </summary>
         /// <param name="database">The name of the database to create.</param>
         /// <returns>An API response for the write request.</returns>
-        public abstract Task<InfluxDbApiResponse> CreateDatabaseAsync(string database);
+        public abstract Task<CommandResult> CreateDatabaseAsync(string database);
 
         /// <summary>
         /// Drops an existing database given its name.
         /// </summary>
         /// <param name="database">The name of the database to drop.</param>
         /// <returns>An API response for the write request.</returns>
-        public abstract Task<InfluxDbApiResponse> DropDatabaseAsync(string database);
+        public abstract Task<CommandResult> DropDatabaseAsync(string database);
 
         #endregion Databases
 
@@ -70,7 +70,7 @@ namespace Tickbird.Core.Data
         /// </summary>
         /// <param name="database">The name of the database to get retention policies for.</param>
         /// <returns>The list of retention policies for the database.</returns>
-        public abstract Task<IEnumerable<InfluxDbRetentionPolicy>> GetRetentionPoliciesAsync(string database);
+        public abstract Task<IEnumerable<RetentionPolicy>> GetRetentionPoliciesAsync(string database);
 
         /// <summary>
         /// Creates a new retention policy for a given database.
@@ -81,7 +81,7 @@ namespace Tickbird.Core.Data
         /// <param name="replication">The replication number for the policy.</param>
         /// <param name="isDefault">Whether or not this will be the default policy for the database.</param>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> CreateRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false);
+        public abstract Task<CommandResult> CreateRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false);
 
         /// <summary>
         /// Alters an existing retention policy for a given database.
@@ -92,7 +92,7 @@ namespace Tickbird.Core.Data
         /// <param name="replication">The replication number for the policy.</param>
         /// <param name="isDefault">Whether or not this will be the default policy for the database.</param>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> AlterRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false);
+        public abstract Task<CommandResult> AlterRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false);
 
         /// <summary>
         /// Drops an existing retention policy.
@@ -100,7 +100,7 @@ namespace Tickbird.Core.Data
         /// <param name="database">The name of the database the retention policy belongs to.</param>
         /// <param name="policyName">The name of the retention policy to drop.</param>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> DropRetentionPolicyAsync(string database, string policyName);
+        public abstract Task<CommandResult> DropRetentionPolicyAsync(string database, string policyName);
 
         #endregion Retention Policies
 
@@ -119,7 +119,7 @@ namespace Tickbird.Core.Data
         /// <param name="database">The database to drop the series from.</param>
         /// <param name="measurement">The measurement to drop the series from.</param>
         /// <returns>An API response for the write request.</returns>
-        public abstract Task<InfluxDbApiResponse> DropMeasurementAsync(string database, string measurement);
+        public abstract Task<CommandResult> DropMeasurementAsync(string database, string measurement);
 
         /// <summary>
         /// Gets the list of tag keys for a specified measurement.
@@ -136,7 +136,7 @@ namespace Tickbird.Core.Data
         /// <param name="measurement">The measurment to get tag keys for.</param>
         /// <param name="tag">The name of the tag to get values for.</param>
         /// <returns>A list of tag keys/names for the specified measurment.</returns>
-        public abstract Task<IEnumerable<InfluxDbTagValue>> GetTagValuesAsync(string database, string measurement, string tag);
+        public abstract Task<IEnumerable<TagValue>> GetTagValuesAsync(string database, string measurement, string tag);
 
         /// <summary>
         /// Gets the list of field keys for a specified measurement.
@@ -144,35 +144,35 @@ namespace Tickbird.Core.Data
         /// <param name="database">The database to use.</param>
         /// <param name="measurement">The measurment to get field keys for.</param>
         /// <returns>A list of field keys/names for the specified measurment.</returns>
-        public abstract Task<IEnumerable<InfluxDbFieldKey>> GetFieldKeysAsync(string database, string measurement);
+        public abstract Task<IEnumerable<FieldKey>> GetFieldKeysAsync(string database, string measurement);
 
         /// <summary>
         /// Gets every measurement in a database with its field and tag names (used by query IntelliSense).
         /// The default asks per measurement; clients override it with a cheaper whole-database query.
         /// </summary>
-        public virtual async Task<IReadOnlyList<InfluxDbMeasurementSchema>> GetDatabaseSchemaAsync(string database)
+        public virtual async Task<IReadOnlyList<MeasurementSchema>> GetDatabaseSchemaAsync(string database)
         {
             var names = (await GetMeasurementNamesAsync(database) ?? Enumerable.Empty<string>()).ToList();
-            var fieldSeries = new List<InfluxDbSeries>();
-            var tagSeries = new List<InfluxDbSeries>();
+            var fieldSeries = new List<ResultSeries>();
+            var tagSeries = new List<ResultSeries>();
             foreach (var name in names)
             {
                 try
                 {
-                    var fields = await GetFieldKeysAsync(database, name) ?? Enumerable.Empty<InfluxDbFieldKey>();
-                    fieldSeries.Add(new InfluxDbSeries(name, new List<string> { "fieldKey", "fieldType" }, new Dictionary<string, string>(),
+                    var fields = await GetFieldKeysAsync(database, name) ?? Enumerable.Empty<FieldKey>();
+                    fieldSeries.Add(new ResultSeries(name, new List<string> { "fieldKey", "fieldType" }, new Dictionary<string, string>(),
                         fields.Select(f => (IList<object>)new List<object> { f.Name, f.Type }).ToList()));
                     var tags = await GetTagKeysAsync(database, name) ?? Enumerable.Empty<string>();
-                    tagSeries.Add(new InfluxDbSeries(name, new List<string> { "tagKey" }, new Dictionary<string, string>(),
+                    tagSeries.Add(new ResultSeries(name, new List<string> { "tagKey" }, new Dictionary<string, string>(),
                         tags.Select(t => (IList<object>)new List<object> { t }).ToList()));
                 }
                 catch (Exception) { /* one unreadable measurement must not hide the rest */ }
             }
-            return InfluxDbMeasurementSchema.FromInfluxQl(fieldSeries, tagSeries, names);
+            return MeasurementSchema.FromInfluxQl(fieldSeries, tagSeries, names);
         }
 
         /// <summary>Gets fields from a specific retention policy, where supported.</summary>
-        public virtual Task<IEnumerable<InfluxDbFieldKey>> GetFieldKeysAsync(
+        public virtual Task<IEnumerable<FieldKey>> GetFieldKeysAsync(
             string database, string measurement, string retentionPolicy) => GetFieldKeysAsync(database, measurement);
 
         #endregion Measurements
@@ -193,7 +193,7 @@ namespace Tickbird.Core.Data
         /// <param name="database">The database to drop the series from.</param>
         /// <param name="measurement">The measurement to drop the series from.</param>
         /// <returns>An API response for the write request.</returns>
-        public abstract Task<InfluxDbApiResponse> DropSeriesAsync(string database, string measurement = null);
+        public abstract Task<CommandResult> DropSeriesAsync(string database, string measurement = null);
 
         #endregion Series
 
@@ -203,13 +203,13 @@ namespace Tickbird.Core.Data
         /// Gets a list of the currently running queries.
         /// </summary>
         /// <returns>A list of the currently running queries.</returns>
-        public abstract Task<IEnumerable<InfluxDbRunningQuery>> GetRunningQueriesAsync();
+        public abstract Task<IEnumerable<RunningQuery>> GetRunningQueriesAsync();
 
         /// <summary>
         /// Kills a running query given its process ID.
         /// </summary>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> KillQueryAsync(int pid);
+        public abstract Task<CommandResult> KillQueryAsync(int pid);
 
         /// <summary>
         /// Executes a query against the connection for the given database.
@@ -217,13 +217,13 @@ namespace Tickbird.Core.Data
         /// <param name="database">The name of the database to query.</param>
         /// <param name="query">The query to execute.</param>
         /// <returns>The result of the query.</returns>
-        public abstract Task<IEnumerable<InfluxDbSeries>> QueryAsync(string database, string query);
+        public abstract Task<IEnumerable<ResultSeries>> QueryAsync(string database, string query);
 
         /// <summary>
         /// Executes a query that can be cancelled (Stop button or query timeout). Clients that can abort the
         /// request override this; the default stops waiting for the result.
         /// </summary>
-        public virtual Task<IEnumerable<InfluxDbSeries>> QueryAsync(string database, string query, CancellationToken cancellationToken) =>
+        public virtual Task<IEnumerable<ResultSeries>> QueryAsync(string database, string query, CancellationToken cancellationToken) =>
             cancellationToken.CanBeCanceled ? QueryAsync(database, query).WaitAsync(cancellationToken) : QueryAsync(database, query);
 
         /// <summary>
@@ -231,14 +231,14 @@ namespace Tickbird.Core.Data
         /// </summary>
         /// <param name="database">The name of the database.</param>
         /// <returns>The database's continous queries.</returns>
-        public abstract Task<IEnumerable<InfluxDbContinuousQuery>> GetContinousQueriesAsync(string database);
+        public abstract Task<IEnumerable<ContinuousQuery>> GetContinousQueriesAsync(string database);
 
         /// <summary>
         /// Creates a new Influx DB Continuous Query.
         /// </summary>
         /// <param name="cqParams">The parameters used to create the CQ.</param>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> CreateContinuousQueryAsync(InfluxDbCqParams cqParams);
+        public abstract Task<CommandResult> CreateContinuousQueryAsync(ContinuousQueryParams cqParams);
 
         /// <summary>
         /// Drops an existing Influx DB Continuous Query.
@@ -246,7 +246,7 @@ namespace Tickbird.Core.Data
         /// <param name="database">The name of the database the Continuous Query belongs to.</param>
         /// <param name="cqName">The name of the Continuous Query to drop.</param>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> DropContinuousQueryAsync(string database, string cqName);
+        public abstract Task<CommandResult> DropContinuousQueryAsync(string database, string cqName);
 
         /// <summary>
         /// Performs a backfill query on the database based on a given time range and backfill parameters.
@@ -254,7 +254,7 @@ namespace Tickbird.Core.Data
         /// <param name="database">The name of the database to perform the backfill on.</param>
         /// <param name="backfillParams">The backfill parameters query.</param>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> BackfillAsync(string database, InfluxDbBackfillParams backfillParams);
+        public abstract Task<CommandResult> BackfillAsync(string database, BackfillParams backfillParams);
 
         #endregion Query
 
@@ -270,7 +270,7 @@ namespace Tickbird.Core.Data
         /// <param name="timeStamp">The point's time stamp.</param>
         /// <param name="retentionPolicy">The retention policy to write to.</param>
         /// <returns>An API response for the write request.</returns>
-        public abstract Task<InfluxDbApiResponse> WriteAsync(string database, string measurement,
+        public abstract Task<CommandResult> WriteAsync(string database, string measurement,
             IDictionary<string, object> tags, IDictionary<string, object> fields, DateTime timeStamp, string retentionPolicy = null);
 
         /// <summary>
@@ -280,7 +280,7 @@ namespace Tickbird.Core.Data
         /// <param name="point">The InfluxDB point to write.</param>
         /// <param name="retentionPolicy">The retention policy to write to.</param>
         /// <returns>An API response for the write request.</returns>
-        public abstract Task<InfluxDbApiResponse> WriteAsync(string database, InfluxDbPoint point, string retentionPolicy = null);
+        public abstract Task<CommandResult> WriteAsync(string database, DataPoint point, string retentionPolicy = null);
 
         /// <summary>
         /// Writes a list of points to the specified database.
@@ -289,7 +289,7 @@ namespace Tickbird.Core.Data
         /// <param name="points">The InfluxDB points to write.</param>
         /// <param name="retentionPolicy">The retention policy to write to.</param>
         /// <returns>An API response for the write request.</returns>
-        public abstract Task<InfluxDbApiResponse> WriteAsync(string database, IEnumerable<InfluxDbPoint> points, string retentionPolicy = null);
+        public abstract Task<CommandResult> WriteAsync(string database, IEnumerable<DataPoint> points, string retentionPolicy = null);
 
         #endregion Write
 
@@ -299,19 +299,19 @@ namespace Tickbird.Core.Data
         /// Sends a ping request message to the InfluxDB server and returns the pong response.
         /// </summary>
         /// <returns>The server's response to the ping request.</returns>
-        public abstract Task<InfluxDbPingResponse> PingAsync();
+        public abstract Task<PingResponse> PingAsync();
 
         /// <summary>
         /// Gets diagnostic information from the InfluxDB server.
         /// </summary>
         /// <returns>The server's diagnostics information.</returns>
-        public abstract Task<InfluxDbDiagnostics> GetDiagnosticsAsync();
+        public abstract Task<ServerDiagnostics> GetDiagnosticsAsync();
 
         /// <summary>
         /// Gets server statistics from the InfluxDB server.
         /// </summary>
         /// <returns>The server's statistics.</returns>
-        public abstract Task<InfluxDbStats> GetStatsAsync();
+        public abstract Task<ServerStats> GetStatsAsync();
 
         #endregion Server
 
@@ -321,7 +321,7 @@ namespace Tickbird.Core.Data
         /// Gets a list of the current system users.
         /// </summary>
         /// <returns>A list of system users.</returns>
-        public abstract Task<IEnumerable<InfluxDbUser>> GetUsersAsync();
+        public abstract Task<IEnumerable<DatabaseUser>> GetUsersAsync();
 
         /// <summary>
         /// Creates a new InfluxDB user with the given user name, password, and admin privileges.
@@ -330,14 +330,14 @@ namespace Tickbird.Core.Data
         /// <param name="password">The user's password.</param>
         /// <param name="isAdmin">Whether or not to grant administrator privileges to the user.</param>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> CreateUserAsync(string username, string password, bool isAdmin);
+        public abstract Task<CommandResult> CreateUserAsync(string username, string password, bool isAdmin);
 
         /// <summary>
         /// Drops an existing InfluxDB user with the given user name.
         /// </summary>
         /// <param name="username">The user's name.</param>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> DropUserAsync(string username);
+        public abstract Task<CommandResult> DropUserAsync(string username);
 
         /// <summary>
         /// Sets a user's password.
@@ -345,28 +345,28 @@ namespace Tickbird.Core.Data
         /// <param name="username">The user's name.</param>
         /// <param name="password">The password to set.</param>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> SetPasswordAsync(string username, string password);
+        public abstract Task<CommandResult> SetPasswordAsync(string username, string password);
 
         /// <summary>
         /// Gets a list of granted database privileges for a user.
         /// </summary>
         /// <param name="username">The name of the user to get granted privilges for.</param>
         /// <returns>A list of granted privileges for the user.</returns>
-        public abstract Task<IEnumerable<InfluxDbGrant>> GetPrivilegesAsync(string username);
+        public abstract Task<IEnumerable<DatabaseGrant>> GetPrivilegesAsync(string username);
 
         /// <summary>
         /// Grants administrator privileges to a user.
         /// </summary>
         /// <param name="username">The name of the user to grant privileges to.</param>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> GrantAdministratorAsync(string username);
+        public abstract Task<CommandResult> GrantAdministratorAsync(string username);
         
         /// <summary>
         /// Revokes administrator privileges from a user.
         /// </summary>
         /// <param name="username">The name of the user to revoke privileges from.</param>
         /// <returns>The API response.</returns>
-        public abstract Task<InfluxDbApiResponse> RevokeAdministratorAsync(string username);
+        public abstract Task<CommandResult> RevokeAdministratorAsync(string username);
 
         /// <summary>
         /// Grants a privilege to a user for a given database.
@@ -375,7 +375,7 @@ namespace Tickbird.Core.Data
         /// <param name="privilege">The privilege to grant.</param>
         /// <param name="database">The name of the database the privilege is for.</param>
         /// <returns>The query response.</returns>
-        public abstract Task<InfluxDbApiResponse> GrantPrivilegeAsync(string username, InfluxDbPrivileges privilege, string database);
+        public abstract Task<CommandResult> GrantPrivilegeAsync(string username, DatabasePrivileges privilege, string database);
 
         /// <summary>
         /// Revokes a privilege from a user for a given database.
@@ -384,7 +384,7 @@ namespace Tickbird.Core.Data
         /// <param name="privilege">The privilege to revoke.</param>
         /// <param name="database">The name of the database the privilege should be revoked from.</param>
         /// <returns>The query response.</returns>
-        public abstract Task<InfluxDbApiResponse> RevokePrivilegeAsync(string username, InfluxDbPrivileges privilege, string database);
+        public abstract Task<CommandResult> RevokePrivilegeAsync(string username, DatabasePrivileges privilege, string database);
 
         #endregion Users
 

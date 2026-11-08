@@ -21,14 +21,14 @@ namespace Tickbird.Core.Data
     /// Legacy InfluxQL administration uses the 1.x compatibility endpoint because
     /// the official package intentionally exposes only the v2-compatible APIs.
     /// </summary>
-    public sealed class OfficialInfluxDb1Client : InfluxDbClient
+    public sealed class OfficialInfluxDb1Client : DatabaseClient
     {
         private readonly OfficialInfluxDbClient influx;
         private readonly HttpClient influxQl;
 
-        public OfficialInfluxDb1Client(InfluxDbConnection connection) : base(connection)
+        public OfficialInfluxDb1Client(DatabaseConnection connection) : base(connection)
         {
-            var allowUntrusted = InfluxDbClientFactory.AllowUntrustedSsl();
+            var allowUntrusted = DatabaseClientFactory.AllowUntrustedSsl();
             var options = new InfluxDBClientOptions(connection.HttpConnectionString)
             {
                 Org = "ignored",
@@ -62,21 +62,21 @@ namespace Tickbird.Core.Data
         public override async Task<IEnumerable<string>> GetDatabaseNamesAsync() =>
             ColumnValues(await QueryInfluxQlAsync(null, "SHOW DATABASES"), "name").ToList();
 
-        public override Task<InfluxDbApiResponse> CreateDatabaseAsync(string database) =>
+        public override Task<CommandResult> CreateDatabaseAsync(string database) =>
             ExecuteCommandAsync(null, "CREATE DATABASE " + QuoteIdentifier(database));
 
-        public override Task<InfluxDbApiResponse> DropDatabaseAsync(string database) =>
+        public override Task<CommandResult> DropDatabaseAsync(string database) =>
             ExecuteCommandAsync(null, "DROP DATABASE " + QuoteIdentifier(database));
 
-        public override async Task<IEnumerable<InfluxDbRetentionPolicy>> GetRetentionPoliciesAsync(string database)
+        public override async Task<IEnumerable<RetentionPolicy>> GetRetentionPoliciesAsync(string database)
         {
-            var result = new List<InfluxDbRetentionPolicy>();
+            var result = new List<RetentionPolicy>();
             foreach (var series in await QueryInfluxQlAsync(database,
                          "SHOW RETENTION POLICIES ON " + QuoteIdentifier(database)))
             {
                 foreach (var row in series.Values)
                 {
-                    result.Add(new InfluxDbRetentionPolicy
+                    result.Add(new RetentionPolicy
                     {
                         Database = database,
                         Name = GetString(series, row, "name"),
@@ -90,7 +90,7 @@ namespace Tickbird.Core.Data
             return result;
         }
 
-        public override async Task<InfluxDbApiResponse> CreateRetentionPolicyAsync(
+        public override async Task<CommandResult> CreateRetentionPolicyAsync(
             string database, string policyName, string duration, int replication, bool isDefault = false)
         {
             Require(database, "database"); Require(policyName, "policyName"); Require(duration, "duration");
@@ -100,7 +100,7 @@ namespace Tickbird.Core.Data
             return await ExecuteCommandAsync(database, query);
         }
 
-        public override Task<InfluxDbApiResponse> AlterRetentionPolicyAsync(
+        public override Task<CommandResult> AlterRetentionPolicyAsync(
             string database, string policyName, string duration, int replication, bool isDefault = false)
         {
             Require(database, "database"); Require(policyName, "policyName"); Require(duration, "duration");
@@ -110,32 +110,32 @@ namespace Tickbird.Core.Data
             return ExecuteCommandAsync(database, query);
         }
 
-        public override Task<InfluxDbApiResponse> DropRetentionPolicyAsync(string database, string policyName) =>
+        public override Task<CommandResult> DropRetentionPolicyAsync(string database, string policyName) =>
             ExecuteCommandAsync(database, "DROP RETENTION POLICY " + QuoteIdentifier(policyName)
                 + " ON " + QuoteIdentifier(database));
 
         public override async Task<IEnumerable<string>> GetMeasurementNamesAsync(string database) =>
             ColumnValues(await QueryInfluxQlAsync(database, "SHOW MEASUREMENTS"), "name").ToList();
 
-        public override Task<InfluxDbApiResponse> DropMeasurementAsync(string database, string measurement) =>
+        public override Task<CommandResult> DropMeasurementAsync(string database, string measurement) =>
             ExecuteCommandAsync(database, "DROP MEASUREMENT " + QuoteIdentifier(measurement));
 
         public override async Task<IEnumerable<string>> GetTagKeysAsync(string database, string measurement) =>
             ColumnValues(await QueryInfluxQlAsync(database,
                 "SHOW TAG KEYS FROM " + QuoteIdentifier(measurement)), "tagKey").Distinct().ToList();
 
-        public override async Task<IEnumerable<InfluxDbTagValue>> GetTagValuesAsync(
+        public override async Task<IEnumerable<TagValue>> GetTagValuesAsync(
             string database, string measurement, string tag)
         {
             var values = ColumnValues(await QueryInfluxQlAsync(database,
                 "SHOW TAG VALUES FROM " + QuoteIdentifier(measurement) + " WITH KEY = " + QuoteIdentifier(tag)), "value");
-            return values.Select(value => new InfluxDbTagValue(tag, value)).ToList();
+            return values.Select(value => new TagValue(tag, value)).ToList();
         }
 
-        public override async Task<IEnumerable<InfluxDbFieldKey>> GetFieldKeysAsync(
+        public override async Task<IEnumerable<FieldKey>> GetFieldKeysAsync(
             string database, string measurement)
         {
-            var result = new List<InfluxDbFieldKey>();
+            var result = new List<FieldKey>();
             // Measurements in the tree span all policies, so their fields must too.
             var seen = new HashSet<(string Name, string Type)>();
             foreach (var policy in await GetRetentionPoliciesAsync(database))
@@ -147,7 +147,7 @@ namespace Tickbird.Core.Data
                     {
                         var name = GetString(series, row, "fieldKey");
                         var type = GetString(series, row, "fieldType");
-                        if (seen.Add((name, type))) result.Add(new InfluxDbFieldKey(name, type));
+                        if (seen.Add((name, type))) result.Add(new FieldKey(name, type));
                     }
             }
             return result;
@@ -157,10 +157,10 @@ namespace Tickbird.Core.Data
         /// Whole-database schema in a few queries: field keys from every retention policy
         /// (FROM db.rp./.*/) and tag keys for all measurements.
         /// </summary>
-        public override async Task<IReadOnlyList<InfluxDbMeasurementSchema>> GetDatabaseSchemaAsync(string database)
+        public override async Task<IReadOnlyList<MeasurementSchema>> GetDatabaseSchemaAsync(string database)
         {
             Require(database, "database");
-            var fieldSeries = new List<InfluxDbSeries>();
+            var fieldSeries = new List<ResultSeries>();
             List<string> policies;
             try { policies = (await GetRetentionPoliciesAsync(database)).Select(p => p.Name).Where(n => !string.IsNullOrWhiteSpace(n)).ToList(); }
             catch (Exception) { policies = new List<string>(); }
@@ -172,7 +172,7 @@ namespace Tickbird.Core.Data
             IEnumerable<string> measurements;
             try { measurements = await GetMeasurementNamesAsync(database); }
             catch (Exception) { measurements = Enumerable.Empty<string>(); }
-            return InfluxDbMeasurementSchema.FromInfluxQl(fieldSeries, tagSeries, measurements);
+            return MeasurementSchema.FromInfluxQl(fieldSeries, tagSeries, measurements);
         }
 
         public override async Task<IEnumerable<string>> GetSeriesNamesAsync(
@@ -183,59 +183,59 @@ namespace Tickbird.Core.Data
             return ColumnValues(await QueryInfluxQlAsync(database, query), "key").ToList();
         }
 
-        public override async Task<IEnumerable<InfluxDbFieldKey>> GetFieldKeysAsync(
+        public override async Task<IEnumerable<FieldKey>> GetFieldKeysAsync(
             string database, string measurement, string retentionPolicy)
         {
             Require(retentionPolicy, "retentionPolicy");
             var source = QuoteIdentifier(database) + "." + QuoteIdentifier(retentionPolicy)
                 + "." + QuoteIdentifier(measurement);
-            var fields = new List<InfluxDbFieldKey>();
+            var fields = new List<FieldKey>();
             foreach (var series in await QueryInfluxQlAsync(database, "SHOW FIELD KEYS FROM " + source))
                 foreach (var row in series.Values)
-                    fields.Add(new InfluxDbFieldKey(GetString(series, row, "fieldKey"),
+                    fields.Add(new FieldKey(GetString(series, row, "fieldKey"),
                         GetString(series, row, "fieldType")));
             return fields.GroupBy(field => (field.Name, field.Type)).Select(group => group.First()).ToList();
         }
 
-        public override Task<InfluxDbApiResponse> DropSeriesAsync(string database, string measurement = null) =>
+        public override Task<CommandResult> DropSeriesAsync(string database, string measurement = null) =>
             ExecuteCommandAsync(database, "DROP SERIES" + (string.IsNullOrWhiteSpace(measurement)
                 ? string.Empty : " FROM " + QuoteIdentifier(measurement)));
 
-        public override async Task<IEnumerable<InfluxDbRunningQuery>> GetRunningQueriesAsync()
+        public override async Task<IEnumerable<RunningQuery>> GetRunningQueriesAsync()
         {
-            var result = new List<InfluxDbRunningQuery>();
+            var result = new List<RunningQuery>();
             foreach (var series in await QueryInfluxQlAsync("_internal", "SHOW QUERIES"))
                 foreach (var row in series.Values)
-                    result.Add(new InfluxDbRunningQuery(GetInt(series, row, "qid"),
+                    result.Add(new RunningQuery(GetInt(series, row, "qid"),
                         GetString(series, row, "database"), GetString(series, row, "duration"),
                         GetString(series, row, "query")));
             return result;
         }
 
-        public override Task<InfluxDbApiResponse> KillQueryAsync(int pid) =>
+        public override Task<CommandResult> KillQueryAsync(int pid) =>
             ExecuteCommandAsync(null, "KILL QUERY " + pid.ToString(CultureInfo.InvariantCulture));
 
-        public override Task<IEnumerable<InfluxDbSeries>> QueryAsync(string database, string query) =>
+        public override Task<IEnumerable<ResultSeries>> QueryAsync(string database, string query) =>
             QueryInfluxQlAsync(database, query);
 
         /// <summary>Cancelling closes the HTTP request; InfluxDB 1.x then stops the query on the server too.</summary>
-        public override Task<IEnumerable<InfluxDbSeries>> QueryAsync(string database, string query, CancellationToken cancellationToken) =>
+        public override Task<IEnumerable<ResultSeries>> QueryAsync(string database, string query, CancellationToken cancellationToken) =>
             QueryInfluxQlAsync(database, query, cancellationToken);
 
-        public override async Task<IEnumerable<InfluxDbContinuousQuery>> GetContinousQueriesAsync(string database)
+        public override async Task<IEnumerable<ContinuousQuery>> GetContinousQueriesAsync(string database)
         {
-            var result = new List<InfluxDbContinuousQuery>();
+            var result = new List<ContinuousQuery>();
             foreach (var series in await QueryInfluxQlAsync(database, "SHOW CONTINUOUS QUERIES"))
             {
                 if (!string.Equals(series.Name, database, StringComparison.OrdinalIgnoreCase)) continue;
                 foreach (var row in series.Values)
-                    result.Add(new InfluxDbContinuousQuery(GetString(series, row, "name"),
+                    result.Add(new ContinuousQuery(GetString(series, row, "name"),
                         GetString(series, row, "query")));
             }
             return result;
         }
 
-        public override Task<InfluxDbApiResponse> CreateContinuousQueryAsync(InfluxDbCqParams value)
+        public override Task<CommandResult> CreateContinuousQueryAsync(ContinuousQueryParams value)
         {
             if (value == null) throw new ArgumentNullException("cqParams");
             Require(value.Name, "cqParams.Name"); Require(value.Database, "cqParams.Database");
@@ -261,12 +261,12 @@ namespace Tickbird.Core.Data
             return ExecuteCommandAsync(value.Database, query);
         }
 
-        public override Task<InfluxDbApiResponse> DropContinuousQueryAsync(string database, string cqName) =>
+        public override Task<CommandResult> DropContinuousQueryAsync(string database, string cqName) =>
             ExecuteCommandAsync(database, "DROP CONTINUOUS QUERY " + QuoteIdentifier(cqName)
                 + " ON " + QuoteIdentifier(database));
 
-        public override Task<InfluxDbApiResponse> BackfillAsync(
-            string database, InfluxDbBackfillParams value)
+        public override Task<CommandResult> BackfillAsync(
+            string database, BackfillParams value)
         {
             if (value == null) throw new ArgumentNullException("backfillParams");
             var filters = new List<string>
@@ -284,17 +284,17 @@ namespace Tickbird.Core.Data
             return ExecuteCommandAsync(database, query);
         }
 
-        public override Task<InfluxDbApiResponse> WriteAsync(string database, string measurement,
+        public override Task<CommandResult> WriteAsync(string database, string measurement,
             IDictionary<string, object> tags, IDictionary<string, object> fields, DateTime timeStamp,
             string retentionPolicy = null) =>
-            WriteAsync(database, new InfluxDbPoint(measurement, tags, fields, timeStamp), retentionPolicy);
+            WriteAsync(database, new DataPoint(measurement, tags, fields, timeStamp), retentionPolicy);
 
-        public override Task<InfluxDbApiResponse> WriteAsync(
-            string database, InfluxDbPoint point, string retentionPolicy = null) =>
+        public override Task<CommandResult> WriteAsync(
+            string database, DataPoint point, string retentionPolicy = null) =>
             WriteAsync(database, new[] { point }, retentionPolicy);
 
-        public override async Task<InfluxDbApiResponse> WriteAsync(
-            string database, IEnumerable<InfluxDbPoint> points, string retentionPolicy = null)
+        public override async Task<CommandResult> WriteAsync(
+            string database, IEnumerable<DataPoint> points, string retentionPolicy = null)
         {
             Require(database, "database");
             if (points == null) throw new ArgumentNullException("points");
@@ -305,20 +305,20 @@ namespace Tickbird.Core.Data
             return SuccessResponse();
         }
 
-        public override async Task<InfluxDbPingResponse> PingAsync()
+        public override async Task<PingResponse> PingAsync()
         {
             var watch = Stopwatch.StartNew();
             var success = await influx.PingAsync();
             var version = await influx.VersionAsync();
             watch.Stop();
-            return new InfluxDbPingResponse(success, watch.Elapsed,
+            return new PingResponse(success, watch.Elapsed,
                 string.IsNullOrWhiteSpace(version) ? "1.x" : version);
         }
 
-        public override async Task<InfluxDbDiagnostics> GetDiagnosticsAsync()
+        public override async Task<ServerDiagnostics> GetDiagnosticsAsync()
         {
             var series = await QueryInfluxQlAsync(null, "SHOW DIAGNOSTICS");
-            var diagnostics = new InfluxDbDiagnostics();
+            var diagnostics = new ServerDiagnostics();
             foreach (var item in series)
             {
                 var row = item.Values.FirstOrDefault();
@@ -346,21 +346,21 @@ namespace Tickbird.Core.Data
                     diagnostics.CurrentTime = current;
                     diagnostics.Started = started;
                     diagnostics.PID = GetLong(item, row, "PID");
-                    diagnostics.Uptime = InfluxDbDiagnostics.ParseGoDuration(GetString(item, row, "uptime"));
+                    diagnostics.Uptime = ServerDiagnostics.ParseGoDuration(GetString(item, row, "uptime"));
                 }
             }
             return diagnostics;
         }
 
-        public override async Task<InfluxDbStats> GetStatsAsync()
+        public override async Task<ServerStats> GetStatsAsync()
         {
             var groups = (await QueryInfluxQlAsync(null, "SHOW STATS"))
                 .GroupBy(series => (series.Name ?? string.Empty).ToLowerInvariant())
-                .ToDictionary(group => group.Key, group => (IEnumerable<InfluxDbSeries>)group.ToList());
-            IEnumerable<InfluxDbSeries> Find(params string[] keys) =>
+                .ToDictionary(group => group.Key, group => (IEnumerable<ResultSeries>)group.ToList());
+            IEnumerable<ResultSeries> Find(params string[] keys) =>
                 keys.Select(key => groups.TryGetValue(key, out var value) ? value : null)
                     .FirstOrDefault(value => value != null);
-            return new InfluxDbStats
+            return new ServerStats
             {
                 CQ = Find("cq"), Database = Find("database"), Engine = Find("engine"),
                 Httpd = Find("httpd"), QueryExecutor = Find("queryexecutor", "query_executor"),
@@ -370,61 +370,61 @@ namespace Tickbird.Core.Data
             };
         }
 
-        public override async Task<IEnumerable<InfluxDbUser>> GetUsersAsync()
+        public override async Task<IEnumerable<DatabaseUser>> GetUsersAsync()
         {
-            var result = new List<InfluxDbUser>();
+            var result = new List<DatabaseUser>();
             foreach (var series in await QueryInfluxQlAsync(null, "SHOW USERS"))
                 foreach (var row in series.Values)
-                    result.Add(new InfluxDbUser(GetString(series, row, "user"), GetBool(series, row, "admin")));
+                    result.Add(new DatabaseUser(GetString(series, row, "user"), GetBool(series, row, "admin")));
             return result;
         }
 
-        public override Task<InfluxDbApiResponse> CreateUserAsync(string username, string password, bool isAdmin)
+        public override Task<CommandResult> CreateUserAsync(string username, string password, bool isAdmin)
         {
             var query = "CREATE USER " + QuoteIdentifier(username) + " WITH PASSWORD " + QuoteLiteral(password);
             if (isAdmin) query += " WITH ALL PRIVILEGES";
             return ExecuteCommandAsync(null, query);
         }
 
-        public override Task<InfluxDbApiResponse> DropUserAsync(string username) =>
+        public override Task<CommandResult> DropUserAsync(string username) =>
             ExecuteCommandAsync(null, "DROP USER " + QuoteIdentifier(username));
 
-        public override Task<InfluxDbApiResponse> SetPasswordAsync(string username, string password) =>
+        public override Task<CommandResult> SetPasswordAsync(string username, string password) =>
             ExecuteCommandAsync(null, "SET PASSWORD FOR " + QuoteIdentifier(username) + " = " + QuoteLiteral(password));
 
-        public override async Task<IEnumerable<InfluxDbGrant>> GetPrivilegesAsync(string username)
+        public override async Task<IEnumerable<DatabaseGrant>> GetPrivilegesAsync(string username)
         {
-            var result = new List<InfluxDbGrant>();
+            var result = new List<DatabaseGrant>();
             foreach (var series in await QueryInfluxQlAsync(null,
                          "SHOW GRANTS FOR " + QuoteIdentifier(username)))
                 foreach (var row in series.Values)
                 {
                     var privilege = ParsePrivilege(GetString(series, row, "privilege"));
-                    result.Add(new InfluxDbGrant(GetString(series, row, "database"), privilege));
+                    result.Add(new DatabaseGrant(GetString(series, row, "database"), privilege));
                 }
             return result;
         }
 
-        public override Task<InfluxDbApiResponse> GrantAdministratorAsync(string username) =>
+        public override Task<CommandResult> GrantAdministratorAsync(string username) =>
             ExecuteCommandAsync(null, "GRANT ALL PRIVILEGES TO " + QuoteIdentifier(username));
 
-        public override Task<InfluxDbApiResponse> RevokeAdministratorAsync(string username) =>
+        public override Task<CommandResult> RevokeAdministratorAsync(string username) =>
             ExecuteCommandAsync(null, "REVOKE ALL PRIVILEGES FROM " + QuoteIdentifier(username));
 
-        public override Task<InfluxDbApiResponse> GrantPrivilegeAsync(
-            string username, InfluxDbPrivileges privilege, string database) =>
+        public override Task<CommandResult> GrantPrivilegeAsync(
+            string username, DatabasePrivileges privilege, string database) =>
             ExecuteCommandAsync(null, "GRANT " + PrivilegeText(privilege) + " ON "
                 + QuoteIdentifier(database) + " TO " + QuoteIdentifier(username));
 
-        public override Task<InfluxDbApiResponse> RevokePrivilegeAsync(
-            string username, InfluxDbPrivileges privilege, string database) =>
+        public override Task<CommandResult> RevokePrivilegeAsync(
+            string username, DatabasePrivileges privilege, string database) =>
             ExecuteCommandAsync(null, "REVOKE " + PrivilegeText(privilege) + " ON "
                 + QuoteIdentifier(database) + " FROM " + QuoteIdentifier(username));
 
         /// <summary>Limit for requests that are not given their own cancellation (admin commands, schema reads).</summary>
         private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(100);
 
-        private async Task<IEnumerable<InfluxDbSeries>> QueryInfluxQlAsync(string database, string query,
+        private async Task<IEnumerable<ResultSeries>> QueryInfluxQlAsync(string database, string query,
             CancellationToken cancellationToken = default)
         {
             Require(query, "query");
@@ -432,10 +432,10 @@ namespace Tickbird.Core.Data
             return ParseSeries(response.Body);
         }
 
-        private async Task<InfluxDbApiResponse> ExecuteCommandAsync(string database, string query) =>
+        private async Task<CommandResult> ExecuteCommandAsync(string database, string query) =>
             await SendInfluxQlAsync(database, query);
 
-        private async Task<InfluxDbApiResponse> SendInfluxQlAsync(string database, string query,
+        private async Task<CommandResult> SendInfluxQlAsync(string database, string query,
             CancellationToken cancellationToken = default)
         {
             using var defaultTimeout = cancellationToken.CanBeCanceled ? null : new CancellationTokenSource(DefaultRequestTimeout);
@@ -456,15 +456,15 @@ namespace Tickbird.Core.Data
                         throw new HttpRequestException("InfluxDB 1.x request failed (" + (int)response.StatusCode
                             + " " + response.StatusCode + "): " + body);
                     ThrowIfInfluxError(body);
-                    return new InfluxDbApiResponse(string.IsNullOrWhiteSpace(body) ? "{}" : body,
+                    return new CommandResult(string.IsNullOrWhiteSpace(body) ? "{}" : body,
                         response.StatusCode, true);
                 }
             }
         }
 
-        private static IList<InfluxDbSeries> ParseSeries(string json)
+        private static IList<ResultSeries> ParseSeries(string json)
         {
-            var output = new List<InfluxDbSeries>();
+            var output = new List<ResultSeries>();
             var root = JObject.Parse(json);
             foreach (var result in root["results"] as JArray ?? new JArray())
             {
@@ -477,7 +477,7 @@ namespace Tickbird.Core.Data
                     var tags = (series["tags"] as JObject)?.Properties()
                         .ToDictionary(property => property.Name, property => (string)property.Value)
                         ?? new Dictionary<string, string>();
-                    output.Add(new InfluxDbSeries((string)series["name"], columns, tags, values));
+                    output.Add(new ResultSeries((string)series["name"], columns, tags, values));
                 }
             }
             return output;
@@ -499,7 +499,7 @@ namespace Tickbird.Core.Data
             token == null || token.Type == JTokenType.Null ? null
                 : token is JValue value ? value.Value : token.ToString();
 
-        private static IEnumerable<string> ColumnValues(IEnumerable<InfluxDbSeries> series, string column)
+        private static IEnumerable<string> ColumnValues(IEnumerable<ResultSeries> series, string column)
         {
             foreach (var item in series)
             {
@@ -513,21 +513,21 @@ namespace Tickbird.Core.Data
             }
         }
 
-        private static string GetString(InfluxDbSeries series, IList<object> row, string column)
+        private static string GetString(ResultSeries series, IList<object> row, string column)
         {
             var index = series.GetColumnIndex(column);
             return index < 0 ? null : Convert.ToString(row[index], CultureInfo.InvariantCulture);
         }
-        private static int GetInt(InfluxDbSeries series, IList<object> row, string column) =>
+        private static int GetInt(ResultSeries series, IList<object> row, string column) =>
             int.TryParse(GetString(series, row, column), NumberStyles.Any, CultureInfo.InvariantCulture, out var value)
                 ? value : 0;
-        private static long GetLong(InfluxDbSeries series, IList<object> row, string column) =>
+        private static long GetLong(ResultSeries series, IList<object> row, string column) =>
             long.TryParse(GetString(series, row, column), NumberStyles.Any, CultureInfo.InvariantCulture, out var value)
                 ? value : 0;
-        private static bool GetBool(InfluxDbSeries series, IList<object> row, string column) =>
+        private static bool GetBool(ResultSeries series, IList<object> row, string column) =>
             bool.TryParse(GetString(series, row, column), out var value) && value;
 
-        private static string ToLineProtocol(InfluxDbPoint point)
+        private static string ToLineProtocol(DataPoint point)
         {
             if (point == null) throw new ArgumentNullException("point");
             if (point.Fields == null || point.Fields.Count == 0)
@@ -568,23 +568,23 @@ namespace Tickbird.Core.Data
         }
         private static string QuoteLiteral(string value) =>
             "'" + (value ?? string.Empty).Replace("\\", "\\\\").Replace("'", "\\'") + "'";
-        private static string PrivilegeText(InfluxDbPrivileges privilege) =>
-            privilege == InfluxDbPrivileges.Read ? "READ"
-                : privilege == InfluxDbPrivileges.Write ? "WRITE"
-                : privilege == InfluxDbPrivileges.All ? "ALL" : "NONE";
-        private static InfluxDbPrivileges ParsePrivilege(string value)
+        private static string PrivilegeText(DatabasePrivileges privilege) =>
+            privilege == DatabasePrivileges.Read ? "READ"
+                : privilege == DatabasePrivileges.Write ? "WRITE"
+                : privilege == DatabasePrivileges.All ? "ALL" : "NONE";
+        private static DatabasePrivileges ParsePrivilege(string value)
         {
-            if (string.IsNullOrWhiteSpace(value)) return InfluxDbPrivileges.None;
-            if (value.IndexOf("ALL", StringComparison.OrdinalIgnoreCase) >= 0) return InfluxDbPrivileges.All;
-            if (value.IndexOf("READ", StringComparison.OrdinalIgnoreCase) >= 0) return InfluxDbPrivileges.Read;
-            if (value.IndexOf("WRITE", StringComparison.OrdinalIgnoreCase) >= 0) return InfluxDbPrivileges.Write;
-            return InfluxDbPrivileges.None;
+            if (string.IsNullOrWhiteSpace(value)) return DatabasePrivileges.None;
+            if (value.IndexOf("ALL", StringComparison.OrdinalIgnoreCase) >= 0) return DatabasePrivileges.All;
+            if (value.IndexOf("READ", StringComparison.OrdinalIgnoreCase) >= 0) return DatabasePrivileges.Read;
+            if (value.IndexOf("WRITE", StringComparison.OrdinalIgnoreCase) >= 0) return DatabasePrivileges.Write;
+            return DatabasePrivileges.None;
         }
         private static void Require(string value, string name)
         {
             if (string.IsNullOrWhiteSpace(value)) throw new ArgumentNullException(name);
         }
-        private static InfluxDbApiResponse SuccessResponse() =>
-            new InfluxDbApiResponse("{}", HttpStatusCode.NoContent, true);
+        private static CommandResult SuccessResponse() =>
+            new CommandResult("{}", HttpStatusCode.NoContent, true);
     }
 }

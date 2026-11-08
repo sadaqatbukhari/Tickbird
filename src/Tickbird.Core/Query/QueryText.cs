@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Tickbird.Core.Data;
+using Tickbird.Core.Providers;
 
 namespace Tickbird.Core.Query;
 
@@ -20,7 +21,9 @@ public static class QueryText
 
     /// <summary>The starter query placed in a new query tab.</summary>
     public static string SampleQuery(InfluxDbServerVersion version, string measurement = "measurement") =>
-        version == InfluxDbServerVersion.InfluxDb3
-            ? $"SELECT * FROM \"{measurement}\" WHERE time > now() - INTERVAL '5 minutes' LIMIT 100"
-            : $"SELECT * FROM \"{measurement}\" WHERE time > now() - 5m LIMIT 100";
+        SampleQuery(DatabaseProfiles.For(version), measurement);
+
+    /// <summary>The starter query of the connection's database.</summary>
+    public static string SampleQuery(DatabaseProfile profile, string measurement = "measurement") =>
+        profile.SampleQuery(measurement);
 }

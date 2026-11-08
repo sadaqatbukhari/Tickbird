@@ -1,11 +1,12 @@
 ﻿using Newtonsoft.Json;
+using Tickbird.Core.Providers;
 
 namespace Tickbird.Core.Data
 {
     /// <summary>
     /// Represents the connection information required to connect to a specific InfluxDB server.
     /// </summary>
-    public class InfluxDbConnection
+    public class DatabaseConnection
     {
         #region Fields
 
@@ -66,6 +67,28 @@ namespace Tickbird.Core.Data
         /// </summary>
         public InfluxDbServerVersion ServerVersion { get; set; }
 
+        private DatabaseKind? kind;
+
+        /// <summary>
+        /// Which database this connection is for. Connections saved before other databases were supported have no
+        /// kind and are InfluxDB 1.x or 3.x according to <see cref="ServerVersion"/>.
+        /// </summary>
+        public DatabaseKind Kind
+        {
+            get => kind ?? (ServerVersion == InfluxDbServerVersion.InfluxDb3 ? DatabaseKind.InfluxDb3 : DatabaseKind.InfluxDb1);
+            set
+            {
+                kind = value;
+                // Keep the old setting right for the InfluxDB kinds, so older files and code still read it correctly.
+                if (value == DatabaseKind.InfluxDb3) ServerVersion = InfluxDbServerVersion.InfluxDb3;
+                else if (value == DatabaseKind.InfluxDb1) ServerVersion = InfluxDbServerVersion.InfluxDb1;
+            }
+        }
+
+        /// <summary>What the connection's database supports and how it is presented.</summary>
+        [JsonIgnore]
+        public DatabaseProfile Profile => DatabaseProfiles.For(this);
+
         /// <summary>
         /// Gets whether or not to use SSL to communicate with the InfluxDB server.
         /// </summary>
@@ -99,7 +122,7 @@ namespace Tickbird.Core.Data
         /// <param name="password">The password to use when connecting to the InfluxDB server.</param>
         /// <param name="useSsl">Whether or not to use SSL to communicate with the InfluxDB server.</param>
         /// <param name="database">The name of the preferred database to use (optional).</param>
-        public InfluxDbConnection(string id, string name, string host, ushort port, 
+        public DatabaseConnection(string id, string name, string host, ushort port, 
             string username, string password, bool useSsl = true, string database = null,
             InfluxDbServerVersion serverVersion = InfluxDbServerVersion.InfluxDb1, string token = null)
         {

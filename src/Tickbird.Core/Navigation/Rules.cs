@@ -99,7 +99,7 @@ public static class Validation
 public static class RetentionPolicyRules
 {
     /// <summary>After the default policy is dropped/unset, pick which policy should become the default.</summary>
-    public static InfluxDbRetentionPolicy? ChooseFallbackDefault(IEnumerable<InfluxDbRetentionPolicy> policies, string excludedName)
+    public static RetentionPolicy? ChooseFallbackDefault(IEnumerable<RetentionPolicy> policies, string excludedName)
     {
         var list = policies.ToList();
         return list.FirstOrDefault(p => p.Name.Equals("autogen", StringComparison.OrdinalIgnoreCase))
@@ -107,7 +107,7 @@ public static class RetentionPolicyRules
     }
 
     /// <summary>Default policy first, as shown in the Fields retention policy dropdown.</summary>
-    public static List<InfluxDbRetentionPolicy> OrderForFields(IEnumerable<InfluxDbRetentionPolicy> policies) =>
+    public static List<RetentionPolicy> OrderForFields(IEnumerable<RetentionPolicy> policies) =>
         policies.OrderByDescending(p => p.Default).ToList();
 }
 

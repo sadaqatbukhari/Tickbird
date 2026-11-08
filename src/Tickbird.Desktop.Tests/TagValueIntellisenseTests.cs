@@ -22,9 +22,9 @@ public class TagValueIntellisenseTests
 
     private static async Task<(Window Host, QueryView View, Loader Loader)> CreateAsync(string text)
     {
-        IReadOnlyList<InfluxDbMeasurementSchema> schema = new[]
+        IReadOnlyList<MeasurementSchema> schema = new[]
         {
-            new InfluxDbMeasurementSchema("cpu", new[] { new InfluxDbFieldKey("usage_idle", "float") }, new[] { "host", "region" }),
+            new MeasurementSchema("cpu", new[] { new FieldKey("usage_idle", "float") }, new[] { "host", "region" }),
         };
         var loader = new Loader();
         var view = new QueryView { Database = "telegraf", SchemaLoader = () => Task.FromResult(schema), TagValueLoader = loader.Load };

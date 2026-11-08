@@ -5,14 +5,14 @@ namespace Tickbird.Tests;
 
 public class IntellisenseTests
 {
-    private static InfluxDbSeries Series(string name, string[] columns, params object[][] rows) =>
+    private static ResultSeries Series(string name, string[] columns, params object[][] rows) =>
         new(name, columns.ToList(), new Dictionary<string, string>(), rows.Select(r => (IList<object>)r.ToList()).ToList());
 
-    private static IReadOnlyList<InfluxDbMeasurementSchema> SampleSchema() => new[]
+    private static IReadOnlyList<MeasurementSchema> SampleSchema() => new[]
     {
-        new InfluxDbMeasurementSchema("cpu", new[] { new InfluxDbFieldKey("usage_idle", "float"), new InfluxDbFieldKey("usage_user", "float") }, new[] { "host", "cpu" }),
-        new InfluxDbMeasurementSchema("mem", new[] { new InfluxDbFieldKey("used_percent", "float") }, new[] { "host" }),
-        new InfluxDbMeasurementSchema("disk io", new[] { new InfluxDbFieldKey("reads", "integer") }, Array.Empty<string>()),
+        new MeasurementSchema("cpu", new[] { new FieldKey("usage_idle", "float"), new FieldKey("usage_user", "float") }, new[] { "host", "cpu" }),
+        new MeasurementSchema("mem", new[] { new FieldKey("used_percent", "float") }, new[] { "host" }),
+        new MeasurementSchema("disk io", new[] { new FieldKey("reads", "integer") }, Array.Empty<string>()),
     };
 
     [Fact]
@@ -25,7 +25,7 @@ public class IntellisenseTests
             Series("mem", new[] { "fieldKey", "fieldType" }, new object[] { "used", "integer" }),
         };
         var tags = new[] { Series("cpu", new[] { "tagKey" }, new object[] { "host" }, new object[] { "cpu" }) };
-        var schema = InfluxDbMeasurementSchema.FromInfluxQl(fields, tags, new[] { "cpu", "mem", "empty" });
+        var schema = MeasurementSchema.FromInfluxQl(fields, tags, new[] { "cpu", "mem", "empty" });
 
         Assert.Equal(new[] { "cpu", "empty", "mem" }, schema.Select(s => s.Name));
         var cpu = schema[0];
@@ -45,7 +45,7 @@ public class IntellisenseTests
                 new object[] { "cpu", "usage", "Float64" },
                 new object[] { "mem", "free", "Int64" }),
         };
-        var schema = InfluxDbMeasurementSchema.FromInformationSchema(series);
+        var schema = MeasurementSchema.FromInformationSchema(series);
         Assert.Equal(new[] { "cpu", "mem" }, schema.Select(s => s.Name));
         Assert.Equal(new[] { "host" }, schema[0].Tags);
         Assert.Equal(new[] { "usage" }, schema[0].Fields.Select(f => f.Name));
@@ -144,7 +144,7 @@ public class IntellisenseTests
     {
         var cache = new SchemaCache();
         var calls = 0;
-        Task<IReadOnlyList<InfluxDbMeasurementSchema>> Load() { calls++; return Task.FromResult(SampleSchema()); }
+        Task<IReadOnlyList<MeasurementSchema>> Load() { calls++; return Task.FromResult(SampleSchema()); }
 
         var first = cache.GetAsync("c1", "db", Load);
         var second = cache.GetAsync("c1", "db", Load);
@@ -161,7 +161,7 @@ public class IntellisenseTests
         cache.Invalidate("c1");
         Assert.Null(cache.TryGetLoaded("c1", "db"));
 
-        var failing = cache.GetAsync("c2", "db", () => Task.FromException<IReadOnlyList<InfluxDbMeasurementSchema>>(new InvalidOperationException("no access")));
+        var failing = cache.GetAsync("c2", "db", () => Task.FromException<IReadOnlyList<MeasurementSchema>>(new InvalidOperationException("no access")));
         await Assert.ThrowsAsync<InvalidOperationException>(() => failing);
         var retried = await cache.GetAsync("c2", "db", Load);
         Assert.Equal(3, retried.Count);

@@ -6,7 +6,7 @@ namespace Tickbird.Desktop.Tests;
 
 public class MainWindowViewModelTests
 {
-    private static InfluxDbConnection Conn(string id, string name, InfluxDbServerVersion v = InfluxDbServerVersion.InfluxDb1) =>
+    private static DatabaseConnection Conn(string id, string name, InfluxDbServerVersion v = InfluxDbServerVersion.InfluxDb1) =>
         new(id, name, "localhost", 8086, "u", "p", false, null, v);
 
     private static TabViewModel RequestTab(string id, string title, string? connectionId = "1", TabKind kind = TabKind.Request) =>

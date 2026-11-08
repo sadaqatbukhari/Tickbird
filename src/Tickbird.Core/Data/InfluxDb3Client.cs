@@ -21,14 +21,14 @@ namespace Tickbird.Core.Data
     /// <summary>
     /// HTTP API client for InfluxDB 3 Core and Enterprise.
     /// </summary>
-    public sealed class InfluxDb3Client : InfluxDbClient
+    public sealed class InfluxDb3Client : DatabaseClient
     {
         private readonly OfficialInfluxDb3Client influx;
         private readonly HttpClient adminHttp;
 
-        public InfluxDb3Client(InfluxDbConnection connection) : base(connection)
+        public InfluxDb3Client(DatabaseConnection connection) : base(connection)
         {
-            var allowUntrusted = InfluxDbClientFactory.AllowUntrustedSsl();
+            var allowUntrusted = DatabaseClientFactory.AllowUntrustedSsl();
             influx = new OfficialInfluxDb3Client(new ClientConfig
             {
                 Host = connection.HttpConnectionString,
@@ -66,14 +66,14 @@ namespace Tickbird.Core.Data
                 .ToList();
         }
 
-        public override async Task<InfluxDbApiResponse> CreateDatabaseAsync(string database)
+        public override async Task<CommandResult> CreateDatabaseAsync(string database)
         {
             Require(database, "database");
             return await SendForResponseAsync(HttpMethod.Post, "api/v3/configure/database",
                 new JObject { ["db"] = database }.ToString(Formatting.None));
         }
 
-        public override async Task<InfluxDbApiResponse> DropDatabaseAsync(string database)
+        public override async Task<CommandResult> DropDatabaseAsync(string database)
         {
             Require(database, "database");
             return await SendForResponseAsync(HttpMethod.Delete,
@@ -87,7 +87,7 @@ namespace Tickbird.Core.Data
             return ColumnValues(series, "table_name");
         }
 
-        public override async Task<InfluxDbApiResponse> DropMeasurementAsync(string database, string measurement)
+        public override async Task<CommandResult> DropMeasurementAsync(string database, string measurement)
         {
             Require(database, "database");
             Require(measurement, "measurement");
@@ -102,41 +102,41 @@ namespace Tickbird.Core.Data
             return columns.Where(c => IsTagType(c.Type)).Select(c => c.Name).ToList();
         }
 
-        public override async Task<IEnumerable<InfluxDbTagValue>> GetTagValuesAsync(
+        public override async Task<IEnumerable<TagValue>> GetTagValuesAsync(
             string database, string measurement, string tag)
         {
             Require(tag, "tag");
             var series = await QuerySqlAsync(database, "SELECT DISTINCT " + QuoteIdentifier(tag)
                 + " FROM " + QuoteIdentifier(measurement) + " ORDER BY " + QuoteIdentifier(tag));
-            return ColumnValues(series, tag).Select(value => new InfluxDbTagValue(tag, value)).ToList();
+            return ColumnValues(series, tag).Select(value => new TagValue(tag, value)).ToList();
         }
 
-        public override async Task<IEnumerable<InfluxDbFieldKey>> GetFieldKeysAsync(
+        public override async Task<IEnumerable<FieldKey>> GetFieldKeysAsync(
             string database, string measurement)
         {
             var columns = await GetSchemaColumnsAsync(database, measurement);
             return columns.Where(c => !IsTagType(c.Type) && !string.Equals(c.Name, "time", StringComparison.OrdinalIgnoreCase))
-                .Select(c => new InfluxDbFieldKey(c.Name, c.Type)).ToList();
+                .Select(c => new FieldKey(c.Name, c.Type)).ToList();
         }
 
         /// <summary>Whole-database schema from a single information_schema query.</summary>
-        public override async Task<IReadOnlyList<InfluxDbMeasurementSchema>> GetDatabaseSchemaAsync(string database)
+        public override async Task<IReadOnlyList<MeasurementSchema>> GetDatabaseSchemaAsync(string database)
         {
             Require(database, "database");
             var series = await QuerySqlAsync(database,
                 "SELECT table_name, column_name, data_type FROM information_schema.columns "
                 + "WHERE table_schema = 'iox' ORDER BY table_name, ordinal_position");
-            return InfluxDbMeasurementSchema.FromInformationSchema(series);
+            return MeasurementSchema.FromInformationSchema(series);
         }
 
-        public override async Task<IEnumerable<InfluxDbSeries>> QueryAsync(string database, string query)
+        public override async Task<IEnumerable<ResultSeries>> QueryAsync(string database, string query)
         {
             Require(database, "database");
             Require(query, "query");
             return await QuerySqlAsync(database, query);
         }
 
-        public override async Task<IEnumerable<InfluxDbSeries>> QueryAsync(string database, string query, CancellationToken cancellationToken)
+        public override async Task<IEnumerable<ResultSeries>> QueryAsync(string database, string query, CancellationToken cancellationToken)
         {
             Require(database, "database");
             Require(query, "query");
@@ -144,21 +144,21 @@ namespace Tickbird.Core.Data
             return await QuerySqlAsync(database, query, cancellationToken).WaitAsync(cancellationToken);
         }
 
-        public override async Task<InfluxDbApiResponse> WriteAsync(string database, string measurement,
+        public override async Task<CommandResult> WriteAsync(string database, string measurement,
             IDictionary<string, object> tags, IDictionary<string, object> fields, DateTime timeStamp,
             string retentionPolicy = null)
         {
-            return await WriteAsync(database, new InfluxDbPoint(measurement, tags, fields, timeStamp), retentionPolicy);
+            return await WriteAsync(database, new DataPoint(measurement, tags, fields, timeStamp), retentionPolicy);
         }
 
-        public override async Task<InfluxDbApiResponse> WriteAsync(
-            string database, InfluxDbPoint point, string retentionPolicy = null)
+        public override async Task<CommandResult> WriteAsync(
+            string database, DataPoint point, string retentionPolicy = null)
         {
             return await WriteAsync(database, new[] { point }, retentionPolicy);
         }
 
-        public override async Task<InfluxDbApiResponse> WriteAsync(
-            string database, IEnumerable<InfluxDbPoint> points, string retentionPolicy = null)
+        public override async Task<CommandResult> WriteAsync(
+            string database, IEnumerable<DataPoint> points, string retentionPolicy = null)
         {
             Require(database, "database");
             if (points == null) throw new ArgumentNullException("points");
@@ -166,63 +166,63 @@ namespace Tickbird.Core.Data
             return SuccessResponse();
         }
 
-        public override async Task<InfluxDbPingResponse> PingAsync()
+        public override async Task<PingResponse> PingAsync()
         {
             var watch = Stopwatch.StartNew();
             var version = await influx.GetServerVersion().ConfigureAwait(false);
             watch.Stop();
-            return new InfluxDbPingResponse(true, watch.Elapsed,
+            return new PingResponse(true, watch.Elapsed,
                 string.IsNullOrWhiteSpace(version) ? "3.x" : version);
         }
 
-        public override Task<IEnumerable<InfluxDbRetentionPolicy>> GetRetentionPoliciesAsync(string database) =>
-            Unsupported<IEnumerable<InfluxDbRetentionPolicy>>("Retention policies are replaced by database retention periods in InfluxDB 3.");
-        public override Task<InfluxDbApiResponse> CreateRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false) =>
-            Unsupported<InfluxDbApiResponse>("InfluxDB 3 does not support InfluxDB 1.x retention policies.");
-        public override Task<InfluxDbApiResponse> AlterRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false) =>
-            Unsupported<InfluxDbApiResponse>("InfluxDB 3 does not support InfluxDB 1.x retention policies.");
-        public override Task<InfluxDbApiResponse> DropRetentionPolicyAsync(string database, string policyName) =>
-            Unsupported<InfluxDbApiResponse>("InfluxDB 3 does not support InfluxDB 1.x retention policies.");
+        public override Task<IEnumerable<RetentionPolicy>> GetRetentionPoliciesAsync(string database) =>
+            Unsupported<IEnumerable<RetentionPolicy>>("Retention policies are replaced by database retention periods in InfluxDB 3.");
+        public override Task<CommandResult> CreateRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false) =>
+            Unsupported<CommandResult>("InfluxDB 3 does not support InfluxDB 1.x retention policies.");
+        public override Task<CommandResult> AlterRetentionPolicyAsync(string database, string policyName, string duration, int replication, bool isDefault = false) =>
+            Unsupported<CommandResult>("InfluxDB 3 does not support InfluxDB 1.x retention policies.");
+        public override Task<CommandResult> DropRetentionPolicyAsync(string database, string policyName) =>
+            Unsupported<CommandResult>("InfluxDB 3 does not support InfluxDB 1.x retention policies.");
         public override Task<IEnumerable<string>> GetSeriesNamesAsync(string database, string measurement = null) =>
             Unsupported<IEnumerable<string>>("SHOW SERIES is an InfluxDB 1.x operation.");
-        public override Task<InfluxDbApiResponse> DropSeriesAsync(string database, string measurement = null) =>
-            Unsupported<InfluxDbApiResponse>("DROP SERIES is an InfluxDB 1.x operation.");
-        public override Task<IEnumerable<InfluxDbRunningQuery>> GetRunningQueriesAsync() =>
-            Unsupported<IEnumerable<InfluxDbRunningQuery>>("Use the InfluxDB 3 system.queries table from a SQL query.");
-        public override Task<InfluxDbApiResponse> KillQueryAsync(int pid) =>
-            Unsupported<InfluxDbApiResponse>("KILL QUERY is an InfluxDB 1.x operation.");
-        public override Task<IEnumerable<InfluxDbContinuousQuery>> GetContinousQueriesAsync(string database) =>
-            Unsupported<IEnumerable<InfluxDbContinuousQuery>>("Continuous queries are not supported by InfluxDB 3.");
-        public override Task<InfluxDbApiResponse> CreateContinuousQueryAsync(InfluxDbCqParams cqParams) =>
-            Unsupported<InfluxDbApiResponse>("Continuous queries are not supported by InfluxDB 3.");
-        public override Task<InfluxDbApiResponse> DropContinuousQueryAsync(string database, string cqName) =>
-            Unsupported<InfluxDbApiResponse>("Continuous queries are not supported by InfluxDB 3.");
-        public override Task<InfluxDbApiResponse> BackfillAsync(string database, InfluxDbBackfillParams backfillParams) =>
-            Unsupported<InfluxDbApiResponse>("The legacy InfluxQL backfill builder is not supported for InfluxDB 3.");
-        public override Task<InfluxDbDiagnostics> GetDiagnosticsAsync() =>
-            Unsupported<InfluxDbDiagnostics>("The InfluxDB 1.x diagnostics endpoint is not available in InfluxDB 3.");
-        public override Task<InfluxDbStats> GetStatsAsync() =>
-            Unsupported<InfluxDbStats>("The InfluxDB 1.x statistics endpoint is not available in InfluxDB 3.");
-        public override Task<IEnumerable<InfluxDbUser>> GetUsersAsync() =>
-            Unsupported<IEnumerable<InfluxDbUser>>("InfluxDB 3 uses token-based authentication.");
-        public override Task<InfluxDbApiResponse> CreateUserAsync(string username, string password, bool isAdmin) =>
-            Unsupported<InfluxDbApiResponse>("InfluxDB 3 uses token-based authentication.");
-        public override Task<InfluxDbApiResponse> DropUserAsync(string username) =>
-            Unsupported<InfluxDbApiResponse>("InfluxDB 3 uses token-based authentication.");
-        public override Task<InfluxDbApiResponse> SetPasswordAsync(string username, string password) =>
-            Unsupported<InfluxDbApiResponse>("InfluxDB 3 uses token-based authentication.");
-        public override Task<IEnumerable<InfluxDbGrant>> GetPrivilegesAsync(string username) =>
-            Unsupported<IEnumerable<InfluxDbGrant>>("InfluxDB 3 uses token-based authentication.");
-        public override Task<InfluxDbApiResponse> GrantAdministratorAsync(string username) =>
-            Unsupported<InfluxDbApiResponse>("InfluxDB 3 uses token-based authentication.");
-        public override Task<InfluxDbApiResponse> RevokeAdministratorAsync(string username) =>
-            Unsupported<InfluxDbApiResponse>("InfluxDB 3 uses token-based authentication.");
-        public override Task<InfluxDbApiResponse> GrantPrivilegeAsync(string username, InfluxDbPrivileges privilege, string database) =>
-            Unsupported<InfluxDbApiResponse>("InfluxDB 3 uses token-based authentication.");
-        public override Task<InfluxDbApiResponse> RevokePrivilegeAsync(string username, InfluxDbPrivileges privilege, string database) =>
-            Unsupported<InfluxDbApiResponse>("InfluxDB 3 uses token-based authentication.");
+        public override Task<CommandResult> DropSeriesAsync(string database, string measurement = null) =>
+            Unsupported<CommandResult>("DROP SERIES is an InfluxDB 1.x operation.");
+        public override Task<IEnumerable<RunningQuery>> GetRunningQueriesAsync() =>
+            Unsupported<IEnumerable<RunningQuery>>("Use the InfluxDB 3 system.queries table from a SQL query.");
+        public override Task<CommandResult> KillQueryAsync(int pid) =>
+            Unsupported<CommandResult>("KILL QUERY is an InfluxDB 1.x operation.");
+        public override Task<IEnumerable<ContinuousQuery>> GetContinousQueriesAsync(string database) =>
+            Unsupported<IEnumerable<ContinuousQuery>>("Continuous queries are not supported by InfluxDB 3.");
+        public override Task<CommandResult> CreateContinuousQueryAsync(ContinuousQueryParams cqParams) =>
+            Unsupported<CommandResult>("Continuous queries are not supported by InfluxDB 3.");
+        public override Task<CommandResult> DropContinuousQueryAsync(string database, string cqName) =>
+            Unsupported<CommandResult>("Continuous queries are not supported by InfluxDB 3.");
+        public override Task<CommandResult> BackfillAsync(string database, BackfillParams backfillParams) =>
+            Unsupported<CommandResult>("The legacy InfluxQL backfill builder is not supported for InfluxDB 3.");
+        public override Task<ServerDiagnostics> GetDiagnosticsAsync() =>
+            Unsupported<ServerDiagnostics>("The InfluxDB 1.x diagnostics endpoint is not available in InfluxDB 3.");
+        public override Task<ServerStats> GetStatsAsync() =>
+            Unsupported<ServerStats>("The InfluxDB 1.x statistics endpoint is not available in InfluxDB 3.");
+        public override Task<IEnumerable<DatabaseUser>> GetUsersAsync() =>
+            Unsupported<IEnumerable<DatabaseUser>>("InfluxDB 3 uses token-based authentication.");
+        public override Task<CommandResult> CreateUserAsync(string username, string password, bool isAdmin) =>
+            Unsupported<CommandResult>("InfluxDB 3 uses token-based authentication.");
+        public override Task<CommandResult> DropUserAsync(string username) =>
+            Unsupported<CommandResult>("InfluxDB 3 uses token-based authentication.");
+        public override Task<CommandResult> SetPasswordAsync(string username, string password) =>
+            Unsupported<CommandResult>("InfluxDB 3 uses token-based authentication.");
+        public override Task<IEnumerable<DatabaseGrant>> GetPrivilegesAsync(string username) =>
+            Unsupported<IEnumerable<DatabaseGrant>>("InfluxDB 3 uses token-based authentication.");
+        public override Task<CommandResult> GrantAdministratorAsync(string username) =>
+            Unsupported<CommandResult>("InfluxDB 3 uses token-based authentication.");
+        public override Task<CommandResult> RevokeAdministratorAsync(string username) =>
+            Unsupported<CommandResult>("InfluxDB 3 uses token-based authentication.");
+        public override Task<CommandResult> GrantPrivilegeAsync(string username, DatabasePrivileges privilege, string database) =>
+            Unsupported<CommandResult>("InfluxDB 3 uses token-based authentication.");
+        public override Task<CommandResult> RevokePrivilegeAsync(string username, DatabasePrivileges privilege, string database) =>
+            Unsupported<CommandResult>("InfluxDB 3 uses token-based authentication.");
 
-        private async Task<IEnumerable<InfluxDbSeries>> QuerySqlAsync(string database, string query,
+        private async Task<IEnumerable<ResultSeries>> QuerySqlAsync(string database, string query,
             CancellationToken cancellationToken = default)
         {
             var columns = new List<string>();
@@ -241,8 +241,8 @@ namespace Tickbird.Core.Data
                     values.Add(row);
                 }
             }
-            if (columns.Count == 0) return new List<InfluxDbSeries>();
-            return new[] { new InfluxDbSeries(null, columns, new Dictionary<string, string>(), values) };
+            if (columns.Count == 0) return new List<ResultSeries>();
+            return new[] { new ResultSeries(null, columns, new Dictionary<string, string>(), values) };
         }
 
         private async Task<IList<SchemaColumn>> GetSchemaColumnsAsync(string database, string measurement)
@@ -277,7 +277,7 @@ namespace Tickbird.Core.Data
             }
         }
 
-        private async Task<InfluxDbApiResponse> SendForResponseAsync(
+        private async Task<CommandResult> SendForResponseAsync(
             HttpMethod method, string path, string body = null, string mediaType = "application/json")
         {
             using (var request = new HttpRequestMessage(method, path))
@@ -287,13 +287,13 @@ namespace Tickbird.Core.Data
                 {
                     var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode) throw CreateHttpException(response.StatusCode, responseBody);
-                    return new InfluxDbApiResponse(string.IsNullOrWhiteSpace(responseBody) ? "{}" : responseBody,
+                    return new CommandResult(string.IsNullOrWhiteSpace(responseBody) ? "{}" : responseBody,
                         response.StatusCode, true);
                 }
             }
         }
 
-        private static IEnumerable<string> ColumnValues(IEnumerable<InfluxDbSeries> series, string column)
+        private static IEnumerable<string> ColumnValues(IEnumerable<ResultSeries> series, string column)
         {
             foreach (var item in series)
             {
@@ -330,7 +330,7 @@ namespace Tickbird.Core.Data
             return array.ToString();
         }
 
-        private static string ToLineProtocol(InfluxDbPoint point)
+        private static string ToLineProtocol(DataPoint point)
         {
             if (point == null) throw new ArgumentNullException("point");
             if (point.Fields == null || point.Fields.Count == 0)
@@ -378,8 +378,8 @@ namespace Tickbird.Core.Data
         private static Exception CreateHttpException(HttpStatusCode statusCode, string body) =>
             new HttpRequestException("InfluxDB 3 request failed (" + (int)statusCode + " " + statusCode + "): "
                 + (string.IsNullOrWhiteSpace(body) ? "No response body." : body));
-        private static InfluxDbApiResponse SuccessResponse() =>
-            new InfluxDbApiResponse("{}", HttpStatusCode.NoContent, true);
+        private static CommandResult SuccessResponse() =>
+            new CommandResult("{}", HttpStatusCode.NoContent, true);
 
         private sealed class SchemaColumn
         {
