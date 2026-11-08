@@ -227,6 +227,8 @@ TimescaleDB's concepts appear with the same commands as InfluxDB's, under Timesc
 
 Queries are PostgreSQL SQL, with `time_bucket()`, `first()`, `last()` and the other TimescaleDB functions in the IntelliSense list. Results can be shown as a grid, chart or map like any other result, and timestamps are shown in UTC.
 
+More help: [TimescaleDB help](docs/help/timescaledb.md) has a query cookbook, how each tool behaves, what your account needs and troubleshooting. Sample data for trying it is in [docs/sample-data](docs/sample-data).
+
 ### Working with CrateDB
 
 Choose **CrateDB** as the **Version** in the connection dialog. The dialog has no **Database** field (a CrateDB server has one database, `crate`, and its tables live in schemas), starts with the user `crate`, and explains that Tickbird connects over CrateDB's PostgreSQL protocol on port `5432`; the Admin UI and HTTP use `4200`, and the dialog refuses that port. A new CrateDB has the user `crate` with no password.
@@ -244,6 +246,8 @@ Choose **CrateDB** as the **Version** in the connection dialog. The dialog has n
 | Diagnostics / Statistics | Node, version, uptime and cluster; nodes, tables, shards and table health |
 
 Retention policies, continuous queries, backfill and creating or dropping a database do not exist in CrateDB, so their toolbar buttons are hidden while a CrateDB connection is selected. Queries are CrateDB SQL, with `date_bin()`, `date_trunc()` and the `sys` tables in the IntelliSense list.
+
+More help: [CrateDB help](docs/help/cratedb.md) has a query cookbook, how each tool behaves, the differences to keep in mind and troubleshooting. Sample data for trying it is in [docs/sample-data](docs/sample-data).
 
 ## Connecting to a Server
 
