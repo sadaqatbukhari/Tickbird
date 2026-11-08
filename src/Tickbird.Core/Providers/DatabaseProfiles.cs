@@ -22,6 +22,8 @@ public static class DatabaseProfiles
         {
             SystemDatabases = new[] { "_internal" },
             VersionLabel = "InfluxDB Version",
+            UrlSchemes = new[] { "influxdb", "influx", "http", "https" },
+            SignInHint = "If the server has authentication turned off, leave the user and password empty.",
             SampleQuery = measurement => $"SELECT * FROM \"{measurement}\" WHERE time > now() - 5m LIMIT 100"
         });
 
@@ -32,6 +34,8 @@ public static class DatabaseProfiles
         {
             SystemDatabases = new[] { "_internal" },
             VersionLabel = "InfluxDB Version",
+            UrlSchemes = new[] { "influxdb3", "influx3", "http", "https" },
+            SignInHint = "Check that the API token is correct and has not expired.",
             SampleQuery = measurement => $"SELECT * FROM \"{measurement}\" WHERE time > now() - INTERVAL '5 minutes' LIMIT 100"
         });
 

@@ -16,7 +16,7 @@ internal static class ConnectionDialogLayout
     private static readonly IBrush Blue = Brush.Parse("#176FC1");
 
     /// <summary>The parts of the dialog that change with the chosen database.</summary>
-    internal sealed record Parts(TextBlock DatabaseLabel, TextBlock Hint);
+    internal sealed record Parts(TextBlock DatabaseLabel, TextBlock Hint, TextBox Url, TextBlock UrlNote, StackPanel Advice, StackPanel TestResult);
 
     internal static Parts Apply(FormDialog dialog, bool creating, TextBox name, Control group,
         ComboBox server, TextBox host, NumericUpDown port, TextBox database, TextBox username,
@@ -76,6 +76,16 @@ internal static class ConnectionDialogLayout
         AddRow(general, Label("Group"), group);
 
         var serverFields = Fields();
+        var url = new TextBox { Name = "ConnectionUrl", Watermark = "Paste a connection string, for example postgresql://user:password@host:5432/database" };
+        AddRow(serverFields, Label("URL"), url);
+        var urlNote = new TextBlock
+        {
+            Name = "ConnectionUrlNote", FontSize = 10.5, Foreground = Muted, TextWrapping = TextWrapping.Wrap, IsVisible = false
+        };
+        Grid.SetColumn(urlNote, 1);
+        Grid.SetRow(urlNote, serverFields.RowDefinitions.Count);
+        serverFields.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        serverFields.Children.Add(urlNote);
         AddRow(serverFields, Label("Server"), server);
         var address = new Grid { ColumnDefinitions = new ColumnDefinitions("*,132"), ColumnSpacing = 10 };
         Grid.SetColumn(host, 0);
@@ -122,13 +132,15 @@ internal static class ConnectionDialogLayout
         generalHeading.BorderThickness = new Thickness(0);
         generalHeading.Margin = new Thickness(0, 0, 0, 12);
         generalHeading.Padding = new Thickness(0);
+        var advice = new StackPanel { Name = "ConnectionAdvice", Spacing = 4, Margin = new Thickness(0, 8, 0, 0), IsVisible = false };
+        var testResult = new StackPanel { Name = "ConnectionTestResult", Spacing = 6, Margin = new Thickness(0, 14, 0, 0), IsVisible = false };
         var body = new StackPanel { Margin = new Thickness(24, 18, 24, 20), Children =
         {
-            generalHeading, general, Section("SERVER"), serverFields, hint,
-            Section("AUTHENTICATION"), auth, ssl
+            generalHeading, general, Section("SERVER"), serverFields, hint, advice,
+            Section("AUTHENTICATION"), auth, ssl, testResult
         } };
         dialog.SetBody(body);
-        return new Parts(databaseLabel, hint);
+        return new Parts(databaseLabel, hint, url, urlNote, advice, testResult);
     }
 
     internal static object ActionContent(string text, string geometry)

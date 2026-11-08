@@ -41,6 +41,8 @@ public sealed class CrateDbClient : PostgresClientBase
         DefaultDatabase = CatalogName,
         DefaultUsername = "crate",
         VersionLabel = "CrateDB Version",
+        UrlSchemes = new[] { "crate", "cratedb" },
+        SignInHint = "A new CrateDB accepts the user crate with no password.",
         ConnectionHint = "Connects over the PostgreSQL protocol on port 5432 (the Admin UI and HTTP use 4200). A new CrateDB has the user crate with no password.",
         ValidateConnection = connection => connection.Port == HttpPort
             ? "Port 4200 is CrateDB's HTTP port. Tickbird connects over the PostgreSQL protocol, by default on port 5432."

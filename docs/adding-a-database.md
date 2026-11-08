@@ -59,8 +59,20 @@ start with a read-only client (list databases and tables, run a query) and add f
 | `DefaultUsername` | A new connection starts with this user (`crate`); a user the person typed is kept when they change database. |
 | `ConnectionHint` | A note under the server fields, for example which port speaks which protocol. |
 | `ValidateConnection` | Extra checks when saving, testing or pinging (CrateDB refuses its HTTP port). |
+| `UrlSchemes` | The schemes a pasted connection string may use (`crate`, `postgresql`...). When several databases claim one (`http`), the default port decides. `ConnectionUrl` does the parsing. |
+| `SignInHint` | What to try when signing in fails, shown with the diagnosis of **Test connection**. |
 | `Capabilities` | A toolbar button whose capability is missing is hidden, and so is a separator left with no buttons beside it (`MainWindow.ToolbarCapabilities`). `AdministratorRights` also decides whether the user dialogs offer an Administrator option. |
 | `Terms` | Tooltips and menus: Create/Drop **Database**, Show **Text Columns**, **Partitions**, Delete All Rows... |
+
+## What helps a person fill in the dialog
+
+| Piece | Where | What it does |
+| --- | --- | --- |
+| `ConnectionUrl` | `Tickbird.Core/Providers` | Reads a pasted connection string into a kind, host, port, user, password or token, database and SSL. |
+| `ConnectionAdvisor` | same | Notes while typing (errors, warnings, information), a suggested name, and `CleanHost` / `PortInHost` for the host box. Database-specific rules come from the profile. |
+| `ConnectionDiagnostics`, `ConnectionHints` | same | Tests a connection in steps and explains a failure in plain words with a hint. The network and the client are passed in, so tests run it without a server. `IConnectionTester` lets the dialog tests replace it. |
+
+A new database gets all of this by filling in `UrlSchemes` and `SignInHint` on its profile.
 
 ## Words and shapes the UI adapts to
 

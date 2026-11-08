@@ -266,11 +266,14 @@ public static class TickbirdDialogs
         }
         server.SelectionChanged += (_, _) => UpdateFields(true);
 
-        DatabaseConnection Build(string id)
+        // clean = true is the connection to save: the host without a scheme, path or port, and a port typed after the host.
+        DatabaseConnection Build(string id, bool clean = false)
         {
             var profile = Selected();
             var token = profile.Authentication == AuthenticationStyle.Token;
-            return new DatabaseConnection(id, name.Text ?? "", host.Text ?? "", (ushort)(port.Value ?? profile.DefaultPort),
+            var typedPort = clean ? ConnectionAdvisor.PortInHost(host.Text) : null;
+            return new DatabaseConnection(id, name.Text ?? "", clean ? ConnectionAdvisor.CleanHost(host.Text) : host.Text ?? "",
+                typedPort ?? (ushort)(port.Value ?? profile.DefaultPort),
                 token ? null : username.Text, token ? null : secret.Text, useSsl.IsChecked == true,
                 profile.UsesDatabaseName && !string.IsNullOrWhiteSpace(database.Text) ? database.Text : null, InfluxDbServerVersion.InfluxDb1, token ? secret.Text : null)
             {
@@ -285,8 +288,82 @@ public static class TickbirdDialogs
         parts = ConnectionDialogLayout.Apply(dialog, existing == null, name, groupRow, server, host, port, database,
             username, usernameLabel, secret, secretLabel, useSsl);
         // The name and host are always required; the chosen database may add its own checks (CrateDB's port 4200 is HTTP).
-        dialog.Validate = () => Selected().Validate(Build(existing?.Id ?? "validate"));
+        dialog.Validate = () => ConnectionAdvisor.FirstError(Build(existing?.Id ?? "validate"));
+
+        // Design B: notes while typing, and a suggested name while the name is still the default.
+        string? lastSuggestion = null;
+        void Refresh()
+        {
+            var current = Build(existing?.Id ?? "validate");
+            if (existing == null)
+            {
+                var suggestion = ConnectionAdvisor.SuggestName(current);
+                if (string.IsNullOrWhiteSpace(name.Text) || name.Text == "New Connection" || name.Text == lastSuggestion) name.Text = suggestion;
+                lastSuggestion = suggestion;
+            }
+            ConnectionDialogPanels.RenderAdvice(parts!.Advice, ConnectionAdvisor.Advise(Build(existing?.Id ?? "validate")));
+        }
+        host.TextChanged += (_, _) => Refresh();
+        port.ValueChanged += (_, _) => Refresh();
+        username.TextChanged += (_, _) => Refresh();
+        secret.TextChanged += (_, _) => Refresh();
+        name.TextChanged += (_, _) => ConnectionDialogPanels.RenderAdvice(parts!.Advice, ConnectionAdvisor.Advise(Build(existing?.Id ?? "validate")));
+        server.SelectionChanged += (_, _) => Refresh();
+        // When the host box is left, a pasted URL or a "host:port" is turned into the plain host name and the port.
+        host.LostFocus += (_, _) =>
+        {
+            var clean = ConnectionAdvisor.CleanHost(host.Text);
+            if (clean.Length == 0 || clean == host.Text) return;
+            if (ConnectionAdvisor.PortInHost(host.Text) is { } typed) port.Value = typed;
+            host.Text = clean;
+        };
+
+        // Design A: a connection string fills the form, then is cleared so a password does not stay on screen.
+        var applyingUrl = false;
+        var clearedByUs = false;      // clearing the box raises one more TextChanged, later; it must not hide the note
+        void ApplyUrl()
+        {
+            if (applyingUrl) return;
+            var text = parts!.Url.Text;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                if (clearedByUs) clearedByUs = false;
+                else parts.UrlNote.IsVisible = false;
+                return;
+            }
+            clearedByUs = false;
+            var parsed = ConnectionUrl.TryParse(text);
+            parts.UrlNote.IsVisible = true;
+            if (parsed == null)
+            {
+                parts.UrlNote.Text = ConnectionUrl.LooksLikeUrl(text)
+                    ? "Tickbird does not know that kind of connection string."
+                    : "That is not a connection string. Example: postgresql://user:password@host:5432/database";
+                return;
+            }
+            applyingUrl = true;
+            try
+            {
+                var index = profiles.ToList().FindIndex(p => p.Kind == parsed.Kind);
+                if (index >= 0) server.SelectedIndex = index;
+                var profile = Selected();
+                host.Text = parsed.Host;
+                port.Value = parsed.Port;
+                username.Text = parsed.Username ?? profile.DefaultUsername;
+                secret.Text = parsed.Token ?? parsed.Password ?? "";
+                database.Text = parsed.Database ?? "";
+                useSsl.IsChecked = parsed.UseSsl;
+                clearedByUs = true;
+                parts.Url.Text = "";
+                parts.UrlNote.Text = $"Filled in from the connection string: {profile.DisplayName} on {parsed.Host}:{parsed.Port}.";
+            }
+            finally { applyingUrl = false; }
+            Refresh();
+        }
+        parts.Url.TextChanged += (_, _) => ApplyUrl();
         UpdateFields(false);
+        if (existing != null) ConnectionDialogPanels.RenderAdvice(parts.Advice, ConnectionAdvisor.Advise(Build(existing.Id)));
+        else Refresh();
 
         // The new group is only saved when the connection is saved.
         newGroup.Click += async (_, _) =>
@@ -299,18 +376,23 @@ public static class TickbirdDialogs
 
         var test = new Button { Content = ConnectionDialogLayout.ActionContent("Test connection", "M4,0 L4,4 M10,0 L10,4 M2,4 L12,4 L12,7 C12,12 2,12 2,7 Z M7,11 L7,15") };
         test.Classes.Add("editorAction");
+        // Design C: the test shows which step failed and what to try; a passing test offers the databases found.
+        var testing = new CancellationTokenSource();
+        dialog.Closed += (_, _) => testing.Cancel();
         test.Click += async (_, _) =>
         {
+            var connection = Build(existing?.Id ?? Guid.NewGuid().ToString(), clean: true);
+            if (ConnectionAdvisor.FirstError(connection) is { } problem) { ConnectionDialogPanels.RenderProblem(parts!.TestResult, problem); return; }
+            test.IsEnabled = false;
+            ConnectionDialogPanels.RenderBusy(parts!.TestResult);
             try
             {
-                var problem = Selected().Validate(Build(existing?.Id ?? "validate"));
-                if (problem != null) throw new InvalidOperationException(problem);
-                var client = DatabaseClientFactory.Create(Build(existing?.Id ?? Guid.NewGuid().ToString()));
-                if (!string.IsNullOrWhiteSpace(client.Connection.Database)) await client.GetMeasurementNamesAsync(client.Connection.Database);
-                else await client.GetDatabaseNamesAsync();
-                await Dialogs.ShowMessageAsync(dialog, "Success", "Connection Successful!");
+                var report = await DiagnosticsFactory().RunAsync(connection, testing.Token);
+                ConnectionDialogPanels.RenderReport(parts.TestResult, report, connection.Profile, database);
             }
-            catch (Exception ex) { await Dialogs.ShowMessageAsync(dialog, "Failure", ex.Message); }
+            catch (OperationCanceledException) { /* the dialog was closed */ }
+            catch (Exception ex) { ConnectionDialogPanels.RenderProblem(parts.TestResult, ex.Message); }
+            finally { test.IsEnabled = true; }
         };
         var ping = new Button { Content = ConnectionDialogLayout.ActionContent("Ping", "M7,5 L7,9 M4,3 C1,5 1,9 4,11 M10,3 C13,5 13,9 10,11 M1,0 C-3,4 -3,10 1,14 M13,0 C17,4 17,10 13,14") };
         ping.Classes.Add("editorAction");
@@ -318,9 +400,9 @@ public static class TickbirdDialogs
         {
             try
             {
-                var problem = Selected().Validate(Build(existing?.Id ?? "validate"));
+                var problem = ConnectionAdvisor.FirstError(Build(existing?.Id ?? "validate"));
                 if (problem != null) throw new InvalidOperationException(problem);
-                var client = DatabaseClientFactory.Create(Build(existing?.Id ?? Guid.NewGuid().ToString()));
+                var client = DatabaseClientFactory.Create(Build(existing?.Id ?? Guid.NewGuid().ToString(), clean: true));
                 var response = await client.PingAsync();
                 if (!response.Success) throw new Exception("There was an error connecting to the server.");
                 await Dialogs.ShowMessageAsync(dialog, "Pong", $"Response Time: {response.ResponseTime.TotalMilliseconds:0} ms\n{Selected().VersionLabel}: {response.Version}");
@@ -330,8 +412,11 @@ public static class TickbirdDialogs
         dialog.LeftButtons.Children.Add(test);
         dialog.LeftButtons.Children.Add(ping);
 
-        return await dialog.ShowAsync(owner) ? Build(existing?.Id ?? Guid.NewGuid().ToString()) : null;
+        return await dialog.ShowAsync(owner) ? Build(existing?.Id ?? Guid.NewGuid().ToString(), clean: true) : null;
     }
+
+    /// <summary>Creates the test of a connection. Tests replace it to run without a network.</summary>
+    public static Func<IConnectionTester> DiagnosticsFactory { get; set; } = () => new ConnectionDiagnostics();
 
     public static Task AboutAsync(Window owner, string version, string? updateMessage, string? releaseUrl, Action<string> openUrl)
     {

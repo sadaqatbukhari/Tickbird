@@ -166,6 +166,15 @@ public sealed class DatabaseProfile
         return ValidateConnection?.Invoke(connection);
     }
 
+    /// <summary>
+    /// The URL schemes a pasted connection string may use for this database (<c>postgresql</c>, <c>crate</c>...). When
+    /// several databases claim a scheme (<c>http</c>), the one whose default port matches wins.
+    /// </summary>
+    public IReadOnlyList<string> UrlSchemes { get; init; } = Array.Empty<string>();
+
+    /// <summary>What to try when signing in fails, for example the default user of a new server. Shown with the diagnosis.</summary>
+    public string? SignInHint { get; init; }
+
     /// <summary>The label of the server version in the Ping result, for example "InfluxDB Version".</summary>
     public string VersionLabel { get; init; } = "Version";
 

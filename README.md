@@ -172,7 +172,8 @@ Press the **Create** button to add your first InfluxDB connection using the **Co
 
 Use the Connection Settings dialog to configure the details of the InfluxDB connection:
 
- * **Name** - The name of the connection. This is the label you will see when working with this connection.
+ * **URL** - Optional. Paste a connection string such as `postgresql://app:pw@db.example.com:5433/metrics?sslmode=require`, `crate://crate@localhost:5434` or `https://influx.example.com:8181/telemetry?token=...` and the server, host, port, user, password or token, database and SSL are filled in. The box is cleared afterwards so a password does not stay on screen. `postgresql://` means TimescaleDB, `crate://` CrateDB; `http(s)://` means InfluxDB 1.x, or 3.x on port 8181.
+ * **Name** - The name of the connection. This is the label you will see when working with this connection. While it is still the default it follows your choices, for example `crate@localhost`; a name you type is never replaced.
  * **Version** - Select the database: **InfluxDB 1.x**, **InfluxDB 3.x**, **TimescaleDB** or **CrateDB**. The port, the sign-in fields and the available commands follow your choice.
  * **Group** - Optional. Pick an existing group or type a new name, for example `PROD`. See [Connection Groups](#connection-groups).
  * **Address** - The InfluxDB server's host URI. Exclude protocol information. **Port** is filled in to the right.
@@ -182,6 +183,10 @@ Use the Connection Settings dialog to configure the details of the InfluxDB conn
  * **Use SSL** - Whether or not to use SSL security (HTTPS) when connecting to InfluxDB.
 
 InfluxDB 1.x defaults to port `8086`; InfluxDB 3.x defaults to port `8181`; TimescaleDB and CrateDB default to port `5432`.
+
+**Notes while you type.** The dialog points out likely mistakes under the server fields: a scheme or path in the host (`http://`), a port typed after the host, `0.0.0.0`, a missing InfluxDB 3.x token, a local PostgreSQL that may already use port 5432, and CrateDB's HTTP port 4200. Warnings do not stop you saving; errors do. When you leave the **Address** box, a pasted URL or `host:port` is turned into the plain host name and the port, and saving does the same.
+
+**Test connection** checks three steps in turn: the host is found, the port is open, and signing in works. If a step fails the dialog shows every step, which one failed and what to try (for example that a new CrateDB accepts the user `crate` with no password, or that nothing is listening on the port). If it works you see one line with the server version and the time it took, a list of the databases the account can see to pick from (for the databases that use a database name), and a **Details** link for the steps. **Ping** shows the version and the response time.
 InfluxDB 3 connections use SQL for queries. Database and table browsing, database creation/deletion,
 tag and field discovery, table deletion, queries, writes, and health checks are supported.
 InfluxDB 1.x-only commands (users and privileges, continuous queries, retention policies,

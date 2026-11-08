@@ -32,6 +32,8 @@ public sealed class TimescaleDbClient : PostgresClientBase
         DefaultDatabase = "postgres",
         SystemDatabases = new[] { "postgres", "template0", "template1" },
         VersionLabel = "TimescaleDB Version",
+        UrlSchemes = new[] { "postgresql", "postgres", "timescaledb" },
+        SignInHint = "The default user of the TimescaleDB Docker image is postgres, with the password you set in POSTGRES_PASSWORD.",
         SampleQuery = table => $"SELECT * FROM {PostgresSql.Table(table)} ORDER BY 1 DESC LIMIT 100",
         CompletionExtras = new (string, string, bool)[]
         {
