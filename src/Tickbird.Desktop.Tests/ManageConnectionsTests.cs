@@ -123,6 +123,49 @@ public class ManageConnectionsTests
     }
 
     [AvaloniaFact]
+    public void CollapsingATypeOrGroup_HidesItsRows_AndSearchShowsThemAgain()
+    {
+        var app = NewApp(Make("C1", DatabaseKind.CrateDb, "PROD"), Make("C2", DatabaseKind.CrateDb, "DEV"), Make("T1", DatabaseKind.TimescaleDb));
+        var window = new ManageConnectionsWindow(app);
+        window.Show();
+        Assert.Equal(3, Rows(window).Count);
+
+        window.Toggle(ManageConnectionsWindow.GroupKey(DatabaseKind.CrateDb, "PROD"));
+        Assert.Equal(new[] { "C2", "T1" }.Order(), Rows(window).Select(r => ((DatabaseConnection)r.Tag!).Name).Order());
+
+        window.Toggle(ManageConnectionsWindow.TypeKey(DatabaseKind.CrateDb));
+        Assert.Equal(new[] { "T1" }, Rows(window).Select(r => ((DatabaseConnection)r.Tag!).Name));
+        Assert.Equal(2, window.GetLogicalDescendants().OfType<Border>().Count(b => b.Classes.Contains("connectionTypeHeading")));
+        Assert.Equal(0, window.GetLogicalDescendants().OfType<Border>().Count(b => b.Classes.Contains("connectionGroupHeading")));
+
+        var search = window.GetLogicalDescendants().OfType<TextBox>().Single(t => t.Name == "ConnectionSearch");
+        search.Text = "c1";
+        Pump();
+        Assert.Single(Rows(window));   // collapsed sections open while searching
+
+        search.Text = "";
+        Pump();
+        window.Toggle(ManageConnectionsWindow.TypeKey(DatabaseKind.CrateDb));
+        // Expanding the type again brings back its rows, except the group that is still collapsed.
+        Assert.Equal(new[] { "C2", "T1" }.Order(), Rows(window).Select(r => ((DatabaseConnection)r.Tag!).Name).Order());
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void TheOpenMarker_IsShownOnlyForAConnectedRow_NextToTheAddress()
+    {
+        var app = NewApp(Make("Idle", DatabaseKind.CrateDb));
+        var window = new ManageConnectionsWindow(app);
+        window.Show();
+        var marker = window.GetLogicalDescendants().OfType<TextBlock>().Single(t => t.Name == "OpenMarker");
+        Assert.False(marker.IsVisible);
+        // The name, address and marker share one panel, so there is no gap between them.
+        var panel = Assert.IsType<StackPanel>(marker.GetLogicalParent());
+        Assert.Equal(3, panel.Children.Count);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void TypingInTheSearchBox_FiltersTheRows()
     {
         var app = NewApp(Make("Alpha", DatabaseKind.CrateDb), Make("Beta", DatabaseKind.TimescaleDb));

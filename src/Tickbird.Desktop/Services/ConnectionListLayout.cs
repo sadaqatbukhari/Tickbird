@@ -52,13 +52,13 @@ public static class ConnectionListLayout
                 .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
             foreach (var group in named)
             {
-                entries.Add(new ConnectionListEntry(ConnectionListEntryKind.GroupHeading, group.Key, group.Count()));
+                entries.Add(new ConnectionListEntry(ConnectionListEntryKind.GroupHeading, group.Key, group.Count(), null, kind));
                 entries.AddRange(group.Select(Row));
             }
             var ungrouped = ofKind.Where(c => TickbirdSettings.NormalizeGroup(c.Group) == null).ToList();
             if (ungrouped.Count > 0)
             {
-                entries.Add(new ConnectionListEntry(ConnectionListEntryKind.GroupHeading, NoGroup, ungrouped.Count));
+                entries.Add(new ConnectionListEntry(ConnectionListEntryKind.GroupHeading, NoGroup, ungrouped.Count, null, kind));
                 entries.AddRange(ungrouped.Select(Row));
             }
         }

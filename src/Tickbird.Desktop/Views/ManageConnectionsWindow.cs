@@ -171,9 +171,13 @@ public sealed class ManageConnectionsWindow : Window
         Redraw();
     }
 
-    private Control Heading(ConnectionListEntry entry)
+    private readonly HashSet<string> collapsed = new();
+
+    private Control Heading(ConnectionListEntry entry, string key)
     {
         var isType = entry.Kind == ConnectionListEntryKind.TypeHeading;
+        var isCollapsed = collapsed.Contains(key);
+        var chevron = new TextBlock { Text = isCollapsed ? "▸" : "▾", FontSize = 11, Foreground = Muted, Width = 12, VerticalAlignment = VerticalAlignment.Center };
         var text = new TextBlock
         {
             Text = isType ? entry.Title : entry.Title.ToUpperInvariant(),
@@ -191,14 +195,31 @@ public sealed class ManageConnectionsWindow : Window
             };
             line.Children.Insert(0, badge);
         }
-        return new Border
+        line.Children.Insert(0, chevron);
+        var heading = new Border
         {
-            Classes = { isType ? "connectionTypeHeading" : "connectionGroupHeading" },
+            Classes = { isType ? "connectionTypeHeading" : "connectionGroupHeading" }, Tag = key, Cursor = new Cursor(StandardCursorType.Hand),
             Background = isType ? Brush.Parse("#E6ECF4") : Brushes.Transparent,
-            Padding = isType ? new Thickness(10, 6) : new Thickness(26, 8, 10, 2),
+            Padding = isType ? new Thickness(10, 6) : new Thickness(24, 8, 10, 2),
             Child = line
         };
+        ToolTip.SetTip(heading, isCollapsed ? "Click to expand" : "Click to collapse");
+        heading.PointerPressed += (_, _) => Toggle(key);
+        return heading;
     }
+
+    /// <summary>Collapses or expands a type or group heading.</summary>
+    public void Toggle(string key)
+    {
+        if (!collapsed.Remove(key)) collapsed.Add(key);
+        Redraw();
+    }
+
+    /// <summary>The key of a type heading, for <see cref="Toggle"/>.</summary>
+    public static string TypeKey(DatabaseKind kind) => "T:" + (int)kind;
+
+    /// <summary>The key of a group heading under a type, for <see cref="Toggle"/>.</summary>
+    public static string GroupKey(DatabaseKind kind, string group) => "G:" + (int)kind + ":" + group;
 
     private static DatabaseKind Kind(ConnectionListEntry entry) => entry.Database ?? DatabaseKind.InfluxDb1;
 
@@ -213,11 +234,13 @@ public sealed class ManageConnectionsWindow : Window
         var host = new TextBlock { Text = $"{c.Host}:{c.Port}", FontSize = 12, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 260 };
         var open = app.IsConnected(c);
         var status = new TextBlock { Name = "OpenMarker", Text = open ? "● open" : "", FontSize = 11, Foreground = Brush.Parse("#0F6E3A"), VerticalAlignment = VerticalAlignment.Center, MinWidth = 46 };
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"), ColumnSpacing = 12 };
+        // Name, address and the open marker sit together after the badge, so there is no gap between them.
+        status.MinWidth = 0;
+        status.IsVisible = open;
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12 };
         grid.Children.Add(badge);
-        Grid.SetColumn(name, 1); grid.Children.Add(name);
-        Grid.SetColumn(host, 2); grid.Children.Add(host);
-        Grid.SetColumn(status, 3); grid.Children.Add(status);
+        var text = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { name, host, status } };
+        Grid.SetColumn(text, 1); grid.Children.Add(text);
 
         var row = new Border
         {
@@ -251,22 +274,37 @@ public sealed class ManageConnectionsWindow : Window
         var entries = ConnectionListLayout.Build(app.Settings.Connections, search.Text);
         list.Children.Clear();
         rows.Clear();
-        // A connection is indented when it sits under a group heading.
+        // A connection is indented when it sits under a group heading. A search ignores what was collapsed, so matches show.
         var underGroup = false;
+        var searching = !string.IsNullOrWhiteSpace(search.Text);
+        DatabaseKind? kind = null;
+        var hideType = false;
+        var hideGroup = false;
         foreach (var entry in entries)
         {
             switch (entry.Kind)
             {
-                case ConnectionListEntryKind.TypeHeading: underGroup = false; list.Children.Add(Heading(entry)); break;
-                case ConnectionListEntryKind.GroupHeading: underGroup = true; list.Children.Add(Heading(entry)); break;
+                case ConnectionListEntryKind.TypeHeading:
+                    underGroup = false; hideGroup = false;
+                    kind = entry.Database;
+                    hideType = !searching && collapsed.Contains(TypeKey(kind!.Value));
+                    list.Children.Add(Heading(entry, TypeKey(kind!.Value)));
+                    break;
+                case ConnectionListEntryKind.GroupHeading:
+                    underGroup = true;
+                    var groupKey = GroupKey(entry.Database ?? DatabaseKind.InfluxDb1, entry.Title);
+                    hideGroup = !searching && collapsed.Contains(groupKey);
+                    if (!hideType) list.Children.Add(Heading(entry, groupKey));
+                    break;
                 default:
+                    if (hideType || hideGroup) break;
                     var row = Row(entry.Connection!, underGroup);
                     rows.Add((entry.Connection!, row));
                     list.Children.Add(row);
                     break;
             }
         }
-        if (rows.Count == 0)
+        if (entries.Count == 0)
         {
             list.Children.Add(new TextBlock
             {
