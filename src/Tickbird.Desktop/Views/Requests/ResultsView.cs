@@ -177,9 +177,11 @@ public sealed class ResultsView : UserControl
 
     // ------------------------------------------------------------------ records (insert, edit, delete)
 
-    private readonly Button insertButton = RecordButton("RecordInsert", "＋ Insert", "Insert a new record into the table (asks for confirmation)");
-    private readonly Button editButton = RecordButton("RecordEdit", "✎ Edit", "Change the selected record (asks for confirmation)");
-    private readonly Button deleteButton = RecordButton("RecordDelete", "✕ Delete", "Delete the selected record (asks for confirmation)");
+    // One Actions button holds the three commands, so a record is not inserted, changed or deleted by a stray click.
+    private readonly Button actionsButton = new() { Name = "RecordActions", Content = "Actions ▾", Padding = new Thickness(10, 2), MinHeight = 26, FontSize = 12 };
+    private readonly MenuItem insertButton = RecordItem("RecordInsert", "＋  Insert Record…");
+    private readonly MenuItem editButton = RecordItem("RecordEdit", "✎  Edit Record…");
+    private readonly MenuItem deleteButton = RecordItem("RecordDelete", "✕  Delete Record…");
     private readonly StackPanel recordBar = new() { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8, 0, 0, 0), IsVisible = false, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
 
     /// <summary>The query that produced this result; records can be edited when it is a plain SELECT from one table.</summary>
@@ -206,18 +208,13 @@ public sealed class ResultsView : UserControl
 
     private DatabaseCapabilities Supported() => RecordEditing.Supported(Client);
 
-    private static Button RecordButton(string name, string text, string tip)
-    {
-        var button = new Button { Name = name, Content = text, Padding = new Thickness(8, 2), MinHeight = 26, FontSize = 12 };
-        ToolTip.SetTip(button, tip);
-        return button;
-    }
+    private static MenuItem RecordItem(string name, string text) => new() { Name = name, Header = text };
 
     private void InitializeRecordButtons()
     {
-        recordBar.Children.Add(insertButton);
-        recordBar.Children.Add(editButton);
-        recordBar.Children.Add(deleteButton);
+        actionsButton.Flyout = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedRight, Items = { insertButton, editButton, deleteButton } };
+        ToolTip.SetTip(actionsButton, "Insert, edit or delete a record (each asks for confirmation)");
+        recordBar.Children.Add(actionsButton);
         insertButton.Click += async (_, _) => await GuardRecord(InsertRecordAsync);
         editButton.Click += async (_, _) => await GuardRecord(EditRecordAsync);
         deleteButton.Click += async (_, _) => await GuardRecord(DeleteRecordAsync);

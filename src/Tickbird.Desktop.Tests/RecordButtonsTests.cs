@@ -21,13 +21,19 @@ public class RecordButtonsTests
         return view;
     }
 
-    private static Button Find(ResultsView view, string name) => view.GetLogicalDescendants().OfType<Button>().Single(b => b.Name == name);
+    private static Button Actions(ResultsView view) => view.GetLogicalDescendants().OfType<Button>().Single(b => b.Name == "RecordActions");
+
+    /// <summary>One of the three commands, which live in the menu of the Actions button.</summary>
+    private static MenuItem Find(ResultsView view, string name) =>
+        ((MenuFlyout)Actions(view).Flyout!).Items.OfType<MenuItem>().Single(i => i.Name == name);
 
     [AvaloniaFact]
     public void APlainSelect_OffersAllThreeOperations_AndEditAndDeleteNeedARow()
     {
         var view = View(DatabaseKind.TimescaleDb, "SELECT * FROM cpu LIMIT 10");
         Assert.Equal("cpu", view.EditableTable);
+        // Nothing destructive is one click away: the three commands are only in the Actions menu.
+        Assert.Equal(new[] { "RecordActions" }, view.GetLogicalDescendants().OfType<Button>().Where(b => b.Name?.StartsWith("Record") == true).Select(b => b.Name));
         Assert.True(Find(view, "RecordInsert").IsVisible && Find(view, "RecordEdit").IsVisible && Find(view, "RecordDelete").IsVisible);
         Assert.False(Find(view, "RecordEdit").IsEnabled);
         Assert.False(Find(view, "RecordDelete").IsEnabled);
@@ -54,7 +60,7 @@ public class RecordButtonsTests
     {
         var view = View(DatabaseKind.TimescaleDb, query);
         Assert.Null(view.EditableTable);
-        Assert.False(view.GetLogicalDescendants().OfType<StackPanel>().Single(p => p.Children.OfType<Button>().Any(b => b.Name == "RecordInsert")).IsVisible);
+        Assert.False(view.GetLogicalDescendants().OfType<StackPanel>().Single(p => p.Children.OfType<Button>().Any(b => b.Name == "RecordActions")).IsVisible);
     }
 
     [AvaloniaFact]

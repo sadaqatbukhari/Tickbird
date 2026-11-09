@@ -422,7 +422,7 @@ The status next to the filter shows how many rows are shown (for example *Showin
 
 ### Inserting, Editing and Deleting Records
 
-When a result comes from a plain `SELECT ... FROM table` (no joins, grouping or aggregates), the bar above the grid shows **＋ Insert**, **✎ Edit** and **✕ Delete**; the same commands are in the right-click menu. Every one of them asks you to confirm before anything is sent, and the query runs again afterwards so the grid shows what is stored.
+When a result comes from a plain `SELECT ... FROM table` (no joins, grouping or aggregates), an **Actions ▾** button above the grid opens a menu with **Insert Record…**, **Edit Record…** and **Delete Record…** (the same commands are in the right-click menu), so nothing is one click away. Every one of them asks you to confirm before anything is sent, and the query runs again afterwards so the grid shows what is stored.
 
 * **Insert** - A form with one box per column. Empty boxes are left out.
 * **Edit** - Shows the selected record; only the columns you change are saved, and the confirmation lists each change as *old → new*. An empty box saves NULL.
