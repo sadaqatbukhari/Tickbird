@@ -159,11 +159,13 @@ public class ManageConnectionsTests
         window.Show();
         var marker = window.GetLogicalDescendants().OfType<TextBlock>().Single(t => t.Name == "OpenMarker");
         Assert.False(marker.IsVisible);
-        // Name, address and marker are columns of one grid; the name and address columns share their width across rows.
+        // Name, address and marker are columns of one grid: the address and the marker are right-aligned, the address
+        // column shares its width across rows and the marker column has a fixed width.
         var grid = Assert.IsType<Grid>(marker.GetLogicalParent());
         Assert.Equal(3, grid.Children.OfType<TextBlock>().Count());
-        Assert.Equal("ConnectionName", grid.ColumnDefinitions[1].SharedSizeGroup);
         Assert.Equal("ConnectionAddress", grid.ColumnDefinitions[2].SharedSizeGroup);
+        Assert.Equal(64, grid.ColumnDefinitions[3].Width.Value);
+        Assert.All(grid.Children.OfType<TextBlock>().Where(t => Grid.GetColumn(t) >= 2), t => Assert.Equal(Avalonia.Layout.HorizontalAlignment.Right, t.HorizontalAlignment));
         Assert.Equal(new[] { 1, 2, 3 }, grid.Children.OfType<TextBlock>().Select(Grid.GetColumn));
         window.Close();
     }

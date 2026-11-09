@@ -239,10 +239,11 @@ public sealed class ManageConnectionsWindow : Window
         var host = new TextBlock { Text = $"{c.Host}:{c.Port}", FontSize = 12, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 220 };
         var open = app.IsConnected(c);
         var status = new TextBlock { Name = "OpenMarker", Text = "● open", FontSize = 11, Foreground = Brush.Parse("#0F6E3A"), VerticalAlignment = VerticalAlignment.Center, IsVisible = open };
-        // The name and address columns are as wide as the longest entry in the whole list (shared size), so every address
-        // and every open marker lines up in a column of its own.
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,*"), ColumnSpacing = 14 };
-        grid.ColumnDefinitions[1].SharedSizeGroup = "ConnectionName";
+        // The name takes the free space. The address and the open marker are right-aligned columns at the edge of the row;
+        // the address column is as wide as the longest address in the list (shared size), the marker column is fixed.
+        host.HorizontalAlignment = HorizontalAlignment.Right;
+        status.HorizontalAlignment = HorizontalAlignment.Right;
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,64"), ColumnSpacing = 14 };
         grid.ColumnDefinitions[2].SharedSizeGroup = "ConnectionAddress";
         grid.Children.Add(dot);
         Grid.SetColumn(name, 1); grid.Children.Add(name);
