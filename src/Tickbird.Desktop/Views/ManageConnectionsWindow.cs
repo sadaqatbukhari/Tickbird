@@ -178,7 +178,7 @@ public sealed class ManageConnectionsWindow : Window
     {
         var isType = entry.Kind == ConnectionListEntryKind.TypeHeading;
         var isCollapsed = collapsed.Contains(key);
-        var chevron = new TextBlock { Text = isCollapsed ? "▸" : "▾", FontSize = 11, Foreground = Muted, Width = 12, VerticalAlignment = VerticalAlignment.Center };
+        var chevron = new TextBlock { Name = "CollapseArrow", Text = isCollapsed ? "▶" : "▼", FontSize = 13, Foreground = Accent, Width = 18, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         var text = new TextBlock
         {
             Text = isType ? entry.Title : entry.Title.ToUpperInvariant(),
