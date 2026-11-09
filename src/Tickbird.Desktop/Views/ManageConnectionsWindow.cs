@@ -70,6 +70,7 @@ public sealed class ManageConnectionsWindow : Window
         remove.Classes.Add("connectionDanger");
         search.TextChanged += (_, _) => Redraw();
 
+        Grid.SetIsSharedSizeScope(list, true);
         scroll.Content = list;
         var top = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8, Margin = new Thickness(0, 0, 0, 10) };
         top.Children.Add(search);
@@ -186,6 +187,8 @@ public sealed class ManageConnectionsWindow : Window
         };
         var count = new TextBlock { Text = entry.Count.ToString(), FontSize = 11, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center };
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { text, count } };
+        if (!isType && app.Settings.GroupColor(entry.Title) is { } groupColor)
+            line.Children.Insert(0, new Border { Name = "GroupColorDot", Width = 10, Height = 10, CornerRadius = new CornerRadius(5), Background = Brush.Parse(groupColor), VerticalAlignment = VerticalAlignment.Center, Tag = groupColor });
         if (isType)
         {
             var badge = new Border
@@ -225,22 +228,26 @@ public sealed class ManageConnectionsWindow : Window
 
     private Border Row(DatabaseConnection c, bool indented)
     {
-        var badge = new Border
+        // The colour of the connection (or of its group) as a dot; a blank space of the same size when it has none.
+        var color = app.Settings.ColorOf(c);
+        var dot = new Border
         {
-            Background = BadgeColor(c.Kind), CornerRadius = new CornerRadius(4), Width = 32, Height = 20, VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock { Text = Code(c.Kind), FontSize = 10, FontWeight = FontWeight.Bold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+            Name = "ConnectionColorDot", Width = 10, Height = 10, CornerRadius = new CornerRadius(5), VerticalAlignment = VerticalAlignment.Center,
+            Background = color != null ? Brush.Parse(color) : Brushes.Transparent, Tag = color
         };
-        var name = new TextBlock { Text = c.Name, FontWeight = FontWeight.SemiBold, Foreground = Accent, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        var host = new TextBlock { Text = $"{c.Host}:{c.Port}", FontSize = 12, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 260 };
+        var name = new TextBlock { Text = c.Name, FontWeight = FontWeight.SemiBold, Foreground = Accent, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 280 };
+        var host = new TextBlock { Text = $"{c.Host}:{c.Port}", FontSize = 12, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 220 };
         var open = app.IsConnected(c);
-        var status = new TextBlock { Name = "OpenMarker", Text = open ? "● open" : "", FontSize = 11, Foreground = Brush.Parse("#0F6E3A"), VerticalAlignment = VerticalAlignment.Center, MinWidth = 46 };
-        // Name, address and the open marker sit together after the badge, so there is no gap between them.
-        status.MinWidth = 0;
-        status.IsVisible = open;
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12 };
-        grid.Children.Add(badge);
-        var text = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { name, host, status } };
-        Grid.SetColumn(text, 1); grid.Children.Add(text);
+        var status = new TextBlock { Name = "OpenMarker", Text = "● open", FontSize = 11, Foreground = Brush.Parse("#0F6E3A"), VerticalAlignment = VerticalAlignment.Center, IsVisible = open };
+        // The name and address columns are as wide as the longest entry in the whole list (shared size), so every address
+        // and every open marker lines up in a column of its own.
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,*"), ColumnSpacing = 14 };
+        grid.ColumnDefinitions[1].SharedSizeGroup = "ConnectionName";
+        grid.ColumnDefinitions[2].SharedSizeGroup = "ConnectionAddress";
+        grid.Children.Add(dot);
+        Grid.SetColumn(name, 1); grid.Children.Add(name);
+        Grid.SetColumn(host, 2); grid.Children.Add(host);
+        Grid.SetColumn(status, 3); grid.Children.Add(status);
 
         var row = new Border
         {
@@ -340,6 +347,7 @@ public sealed class ManageConnectionsWindow : Window
         existing.Database = updated.Database; existing.Username = updated.Username; existing.Password = updated.Password;
         existing.UseSsl = updated.UseSsl; existing.ServerVersion = updated.ServerVersion; existing.Kind = updated.Kind; existing.Token = updated.Token;
         existing.Group = app.Settings.EnsureGroup(updated.Group);
+        existing.Color = updated.Color;
         app.Save();
         ConnectionUpdated?.Invoke(existing);
         Redraw();

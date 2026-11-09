@@ -60,6 +60,28 @@ public sealed class TickbirdSettings
     /// </summary>
     public List<string> Groups { get; set; } = new();
 
+    /// <summary>The colour chosen for each group (#RRGGBB), by group name. A group without an entry has no colour.</summary>
+    public Dictionary<string, string> GroupColors { get; set; } = new();
+
+    /// <summary>The colour of a group, or null when it has none.</summary>
+    public string? GroupColor(string? group)
+    {
+        if (NormalizeGroup(group) == null || GroupColors == null) return null;
+        return ConnectionColors.Normalize(GroupColors.FirstOrDefault(p => SameGroup(p.Key, group)).Value);
+    }
+
+    /// <summary>Sets the colour of a group; null or blank removes it.</summary>
+    public void SetGroupColor(string group, string? color)
+    {
+        GroupColors ??= new Dictionary<string, string>();
+        foreach (var key in GroupColors.Keys.Where(k => SameGroup(k, group)).ToList()) GroupColors.Remove(key);
+        var normalized = ConnectionColors.Normalize(color);
+        if (normalized != null && NormalizeGroup(group) is { } name) GroupColors[name] = normalized;
+    }
+
+    /// <summary>The colour shown for a connection: its own, otherwise its group's, otherwise none.</summary>
+    public string? ColorOf(DatabaseConnection connection) => ConnectionColors.Normalize(connection.Color) ?? GroupColor(connection.Group);
+
     /// <summary>Object Explorer docking layout (docked side, auto-hide, floating window bounds).</summary>
     public PaneLayout Explorer { get; set; } = new();
 
@@ -125,15 +147,19 @@ public sealed class TickbirdSettings
     {
         var target = NormalizeGroup(newName) ?? throw new ArgumentException("Group name cannot be blank.", nameof(newName));
         Groups ??= new List<string>();
+        var color = GroupColor(oldName);
+        SetGroupColor(oldName, null);
         Groups.RemoveAll(g => SameGroup(g, oldName));
         foreach (var connection in Connections.Where(c => c != null && SameGroup(c.Group, oldName))) connection.Group = target;
         EnsureGroup(target);
+        if (color != null) SetGroupColor(target, color);
     }
 
     /// <summary>Deletes a group. Its connections are kept and become ungrouped.</summary>
     public void RemoveGroup(string name)
     {
         Groups?.RemoveAll(g => SameGroup(g, name));
+        SetGroupColor(name, null);
         foreach (var connection in Connections.Where(c => c != null && SameGroup(c.Group, name))) connection.Group = null;
     }
 

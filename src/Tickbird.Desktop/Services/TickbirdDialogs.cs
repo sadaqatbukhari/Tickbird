@@ -193,6 +193,15 @@ public static class TickbirdDialogs
     /// <summary>Label shown in group pickers for connections that are not in a group.</summary>
     public const string NoGroup = "(No group)";
 
+    /// <summary>Asks for a colour. Returns the choice (null = no colour) and whether the user pressed Save.</summary>
+    public static async Task<(bool Saved, string? Color)> ColorAsync(Window owner, string title, string? current)
+    {
+        var swatches = new ColorSwatches(current);
+        swatches.Name = "ColorChoice";
+        var dialog = new FormDialog(title, "Save", ("Colour:", swatches));
+        return await dialog.ShowAsync(owner) ? (true, swatches.Value) : (false, current);
+    }
+
     /// <summary>Asks for a group name. Returns the trimmed name, or null if cancelled.</summary>
     public static async Task<string?> GroupNameAsync(Window owner, string title, string okText, string? current, IEnumerable<string> existing)
     {
@@ -221,6 +230,8 @@ public static class TickbirdDialogs
         groupRow.Children.Add(group);
         groupRow.Children.Add(newGroup);
         string? SelectedGroup() => group.SelectedItem is string g && g != NoGroup ? g : null;
+        var colors = new ColorSwatches(existing?.Color, "Use the group's colour");
+        colors.Name = "ConnectionColor";
         // The databases come from the registry, so a new database appears here without any change to this dialog.
         var profiles = DatabaseProfiles.All;
         var server = new ComboBox
@@ -278,14 +289,15 @@ public static class TickbirdDialogs
                 profile.UsesDatabaseName && !string.IsNullOrWhiteSpace(database.Text) ? database.Text : null, InfluxDbServerVersion.InfluxDb1, token ? secret.Text : null)
             {
                 Group = SelectedGroup(),
+                Color = colors.Value,
                 Kind = profile.Kind
             };
         }
 
         var dialog = new FormDialog(existing == null ? "Create Connection" : "Edit Connection", existing == null ? "Create" : "Save",
-            ("Name:", name), ("Group:", groupRow), ("Server:", server), ("Host:", host), ("Port:", port), ("Database:", database),
+            ("Name:", name), ("Group:", groupRow), ("Colour:", colors), ("Server:", server), ("Host:", host), ("Port:", port), ("Database:", database),
             ("Username:", username), ("Password:", secret), ("", useSsl));
-        parts = ConnectionDialogLayout.Apply(dialog, existing == null, name, groupRow, server, host, port, database,
+        parts = ConnectionDialogLayout.Apply(dialog, existing == null, name, groupRow, colors, server, host, port, database,
             username, usernameLabel, secret, secretLabel, useSsl);
         // The name and host are always required; the chosen database may add its own checks (CrateDB's port 4200 is HTTP).
         dialog.Validate = () => ConnectionAdvisor.FirstError(Build(existing?.Id ?? "validate"));

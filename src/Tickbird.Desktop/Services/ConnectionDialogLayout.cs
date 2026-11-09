@@ -18,7 +18,7 @@ internal static class ConnectionDialogLayout
     /// <summary>The parts of the dialog that change with the chosen database.</summary>
     internal sealed record Parts(TextBlock DatabaseLabel, TextBlock Hint, TextBox Url, TextBlock UrlNote, StackPanel Advice, StackPanel TestResult);
 
-    internal static Parts Apply(FormDialog dialog, bool creating, TextBox name, Control group,
+    internal static Parts Apply(FormDialog dialog, bool creating, TextBox name, Control group, Control colors,
         ComboBox server, TextBox host, NumericUpDown port, TextBox database, TextBox username,
         TextBlock usernameLabel, TextBox secret, TextBlock secretLabel, CheckBox useSsl)
     {
@@ -27,7 +27,7 @@ internal static class ConnectionDialogLayout
         dialog.Foreground = Ink;
         if (Icons.Get("Connection") is { } icon) dialog.Icon = new WindowIcon(icon);
         dialog.Classes.Add("connectionEditor");
-        foreach (var control in new Control[] { name, group, server, host, port, database, username, secret, useSsl })
+        foreach (var control in new Control[] { name, group, colors, server, host, port, database, username, secret, useSsl })
             if (control.Parent is Panel parent) parent.Children.Remove(control);
         AddStyle(dialog, "TextBox", (TextBox.ForegroundProperty, Ink), (TextBox.FontSizeProperty, 12d),
             (TextBox.MinHeightProperty, 32d), (TextBox.BorderBrushProperty, Brush.Parse("#D4DFEC")),
@@ -74,6 +74,9 @@ internal static class ConnectionDialogLayout
         var general = Fields();
         AddRow(general, Label("Name"), name);
         AddRow(general, Label("Group"), group);
+        colors.HorizontalAlignment = HorizontalAlignment.Left;
+        AddRow(general, Label("Colour"), colors);
+        colors.HorizontalAlignment = HorizontalAlignment.Left;
 
         var serverFields = Fields();
         var url = new TextBox { Name = "ConnectionUrl", Watermark = "Paste a connection string, for example postgresql://user:password@host:5432/database" };

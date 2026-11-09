@@ -574,7 +574,7 @@ public partial class MainWindow : Window
             TimeFormat = app.Settings.TimeFormat, DateFormat = app.Settings.DateFormat,
             AllowUntrustedSsl = app.Settings.AllowUntrustedSsl,
             Groups = app.Settings.AllGroups().ToList(),
-            Connections = app.Settings.Connections.Select(c => new DatabaseConnection(c.Id, c.Name, c.Host, c.Port, c.Username, null, c.UseSsl, c.Database, c.ServerVersion, null) { Group = c.Group, Kind = c.Kind }).ToList()
+            Connections = app.Settings.Connections.Select(c => new DatabaseConnection(c.Id, c.Name, c.Host, c.Port, c.Username, null, c.UseSsl, c.Database, c.ServerVersion, null) { Group = c.Group, Color = c.Color, Kind = c.Kind }).ToList()
         };
         await File.WriteAllTextAsync(path, JsonConvert.SerializeObject(export, Formatting.Indented));
         Vm.Status = "Settings exported (passwords and tokens are not included).";

@@ -61,6 +61,9 @@ namespace Tickbird.Core.Data
         /// </summary>
         public string? Group { get; set; }
 
+        /// <summary>The colour chosen for this connection (#RRGGBB), or null to use its group's colour. Older files have none.</summary>
+        public string? Color { get; set; }
+
         /// <summary>
         /// Gets or sets the InfluxDB server generation.
         /// Existing saved connections default to InfluxDB 1.x.
