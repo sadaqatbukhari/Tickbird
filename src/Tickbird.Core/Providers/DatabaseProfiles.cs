@@ -11,7 +11,8 @@ public static class DatabaseProfiles
         | DatabaseCapabilities.Backfill | DatabaseCapabilities.RunningQueries | DatabaseCapabilities.Statistics
         | DatabaseCapabilities.Diagnostics | DatabaseCapabilities.TagKeys | DatabaseCapabilities.TagValues
         | DatabaseCapabilities.FieldKeys | DatabaseCapabilities.Series | DatabaseCapabilities.DropSeries
-        | DatabaseCapabilities.DropMeasurement | DatabaseCapabilities.WriteData | DatabaseCapabilities.AdministratorRights;
+        | DatabaseCapabilities.DropMeasurement | DatabaseCapabilities.WriteData | DatabaseCapabilities.AdministratorRights
+        | DatabaseCapabilities.AllRecordOperations;
 
     private static readonly Dictionary<DatabaseKind, DatabaseProfile> Registered = new();
 
@@ -30,7 +31,8 @@ public static class DatabaseProfiles
         Register(new DatabaseProfile(DatabaseKind.InfluxDb3, "InfluxDB 3.x", 8181, isSql: true, AuthenticationStyle.Token,
             DatabaseCapabilities.CreateDatabase | DatabaseCapabilities.DropDatabase | DatabaseCapabilities.TagKeys
             | DatabaseCapabilities.TagValues | DatabaseCapabilities.FieldKeys | DatabaseCapabilities.DropMeasurement
-            | DatabaseCapabilities.WriteData, DatabaseTerms.Influx, connection => new InfluxDb3Client(connection))
+            | DatabaseCapabilities.WriteData | DatabaseCapabilities.EditRecords | DatabaseCapabilities.InsertRecords,   // no DELETE statement
+            DatabaseTerms.Influx, connection => new InfluxDb3Client(connection))
         {
             SystemDatabases = new[] { "_internal" },
             VersionLabel = "InfluxDB Version",

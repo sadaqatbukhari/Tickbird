@@ -18,7 +18,8 @@ public sealed class TimescaleDbClient : PostgresClientBase
         | DatabaseCapabilities.Backfill | DatabaseCapabilities.RunningQueries | DatabaseCapabilities.Statistics
         | DatabaseCapabilities.Diagnostics | DatabaseCapabilities.TagKeys | DatabaseCapabilities.TagValues
         | DatabaseCapabilities.FieldKeys | DatabaseCapabilities.Series | DatabaseCapabilities.DropSeries
-        | DatabaseCapabilities.DropMeasurement | DatabaseCapabilities.WriteData | DatabaseCapabilities.AdministratorRights;
+        | DatabaseCapabilities.DropMeasurement | DatabaseCapabilities.WriteData | DatabaseCapabilities.AdministratorRights
+        | DatabaseCapabilities.AllRecordOperations;
 
     /// <summary>How TimescaleDB looks in the app.</summary>
     public static readonly DatabaseProfile Profile = new(DatabaseKind.TimescaleDb, "TimescaleDB", 5432, isSql: true,

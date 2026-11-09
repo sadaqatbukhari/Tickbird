@@ -293,6 +293,34 @@ namespace Tickbird.Core.Data
 
         #endregion Write
 
+        #region Records
+
+        /// <summary>
+        /// The columns of a table or measurement and which of them identify a record (see <see cref="RecordSchema"/>).
+        /// Databases that cannot edit records do not override this.
+        /// </summary>
+        public virtual Task<RecordSchema> GetRecordSchemaAsync(string database, string table) =>
+            throw new NotSupportedException("Editing records is not supported for this database.");
+
+        /// <summary>Inserts one record. <paramref name="values"/> are the columns to set; columns left out get their default.</summary>
+        public virtual Task<CommandResult> InsertRecordAsync(string database, RecordSchema schema, IReadOnlyDictionary<string, object> values) =>
+            throw new NotSupportedException("Inserting records is not supported for this database.");
+
+        /// <summary>
+        /// Changes one record. <paramref name="original"/> holds the record as it was read (it finds the record);
+        /// <paramref name="changes"/> holds only the columns that were edited. Fails, without changing anything, when the
+        /// record cannot be found or is not the only one that matches.
+        /// </summary>
+        public virtual Task<CommandResult> UpdateRecordAsync(string database, RecordSchema schema,
+            IReadOnlyDictionary<string, object> original, IReadOnlyDictionary<string, object> changes) =>
+            throw new NotSupportedException("Changing records is not supported for this database.");
+
+        /// <summary>Deletes one record, found from <paramref name="original"/>. Fails, without deleting anything, when it cannot be found or is not the only match.</summary>
+        public virtual Task<CommandResult> DeleteRecordAsync(string database, RecordSchema schema, IReadOnlyDictionary<string, object> original) =>
+            throw new NotSupportedException("Deleting records is not supported for this database.");
+
+        #endregion Records
+
         #region Server
 
         /// <summary>

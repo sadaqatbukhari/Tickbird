@@ -420,6 +420,20 @@ The status next to the filter shows how many rows are shown (for example *Showin
 
 ![Filtering Query Results](docs/img/Results_Filter.png?raw=true "Filtering Query Results")
 
+### Inserting, Editing and Deleting Records
+
+When a result comes from a plain `SELECT ... FROM table` (no joins, grouping or aggregates), the bar above the grid shows **＋ Insert**, **✎ Edit** and **✕ Delete**; the same commands are in the right-click menu. Every one of them asks you to confirm before anything is sent, and the query runs again afterwards so the grid shows what is stored.
+
+* **Insert** - A form with one box per column. Empty boxes are left out.
+* **Edit** - Shows the selected record; only the columns you change are saved, and the confirmation lists each change as *old → new*. An empty box saves NULL.
+* **Delete** - Shows the record and asks *Delete this record?* with a warning that it cannot be undone.
+
+How a record is found depends on the database:
+
+* **TimescaleDB and CrateDB** - By the table's primary key. A table without one is matched on all of its columns, and if more than one identical row exists nothing is changed. The result must include the key columns (or use `SELECT *`).
+* **InfluxDB 1.x** - A record is a point: its **time and tags identify it** and cannot be edited (insert a new point and delete the old one instead). Editing writes the changed fields over the point; deleting removes the whole point at that time with those tags, including fields that are not shown. Times with more precision than Tickbird can read back may not be found; the point is then reported as not found and nothing is changed.
+* **InfluxDB 3.x** - Insert and Edit only. It has no delete statement, so Delete is hidden.
+
 ### Charting Query Results
 
 Every result tab has **Grid** and **Chart** buttons in its top-right corner (you can also right-click the grid and choose **Show as Chart**). The choice is remembered for the query tab, so re-running the query keeps the chart open.

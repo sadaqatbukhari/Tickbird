@@ -323,6 +323,138 @@ public abstract class PostgresClientBase : DatabaseClient
         IReadOnlyDictionary<string, object?>? parameters = null) =>
         ExecuteAsync(database, string.Join(";\n", statements), parameters);
 
+    // ------------------------------------------------------------------ records (edit, insert, delete one row)
+
+    public const string PrimaryKeySql =
+        "SELECT a.attname FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid JOIN pg_namespace n ON n.oid = c.relnamespace " +
+        "JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) " +
+        "WHERE i.indisprimary AND n.nspname = @schema AND c.relname = @table ORDER BY a.attnum";
+
+    /// <summary>The query that lists the primary key columns of a table, with <c>@schema</c> and <c>@table</c>.</summary>
+    protected virtual string PrimaryKeyQuery => PrimaryKeySql;
+
+    /// <summary>Called after a record is written, for a database that must be told to make it visible (CrateDB's REFRESH).</summary>
+    protected virtual Task AfterRecordWrittenAsync(string database, string table) => Task.CompletedTask;
+
+    public override async Task<RecordSchema> GetRecordSchemaAsync(string database, string table)
+    {
+        var columns = await GetColumnsAsync(database, table).ConfigureAwait(false);
+        if (columns.Count == 0) throw new InvalidOperationException($"The table {table} was not found or has no columns.");
+        var (schema, name) = SplitName(table);
+        var key = Rows(await Sql.QueryAsync(database, PrimaryKeyQuery, Args(("schema", schema), ("table", name))).ConfigureAwait(false))
+            .Select(r => Text(r, 0)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return new RecordSchema(table, columns.Select(c => new RecordColumn(c.Name, c.Type, key.Contains(c.Name),
+            string.Equals(c.Name, TimeColumn, StringComparison.OrdinalIgnoreCase))).ToList(), keyIsExact: key.Count > 0);
+    }
+
+    /// <summary>The WHERE condition that finds a record from its identifying values; NULL is matched with IS NULL.</summary>
+    public (string Where, Dictionary<string, object?> Parameters) BuildRecordWhere(RecordSchema schema,
+        IReadOnlyDictionary<string, object> original, string prefix = "k")
+    {
+        var terms = new List<string>();
+        var parameters = new Dictionary<string, object?>();
+        var i = 0;
+        foreach (var column in schema.Identity)
+        {
+            if (!original.TryGetValue(column.Name, out var value)) throw new InvalidOperationException($"The value of {column.Name} is needed to find the record.");
+            var name = PostgresSql.Identifier(column.Name);
+            if (value == null) { terms.Add(name + " IS NULL"); continue; }
+            terms.Add($"{name} = @{prefix}{i}");
+            parameters[$"{prefix}{i}"] = AsParameter(value);
+            i++;
+        }
+        if (terms.Count == 0) throw new InvalidOperationException("There is nothing to identify the record by.");
+        return (string.Join(" AND ", terms), parameters);
+    }
+
+    public (string Sql, Dictionary<string, object?> Parameters) BuildRecordInsert(RecordSchema schema, IReadOnlyDictionary<string, object> values)
+    {
+        if (values.Count == 0) throw new InvalidOperationException("Enter a value for at least one column.");
+        var parameters = new Dictionary<string, object?>();
+        var columns = new List<string>();
+        var names = new List<string>();
+        var i = 0;
+        foreach (var pair in values)
+        {
+            columns.Add(PostgresSql.Identifier(pair.Key));
+            parameters["v" + i] = AsParameter(pair.Value);
+            names.Add("@v" + i);
+            i++;
+        }
+        return ($"INSERT INTO {TableRef(schema.Table)} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", names)})", parameters);
+    }
+
+    public (string Sql, Dictionary<string, object?> Parameters) BuildRecordUpdate(RecordSchema schema,
+        IReadOnlyDictionary<string, object> original, IReadOnlyDictionary<string, object> changes)
+    {
+        if (changes.Count == 0) throw new InvalidOperationException("Nothing was changed.");
+        var (where, parameters) = BuildRecordWhere(schema, original);
+        var sets = new List<string>();
+        var i = 0;
+        foreach (var pair in changes)
+        {
+            sets.Add($"{PostgresSql.Identifier(pair.Key)} = @s{i}");
+            parameters["s" + i] = AsParameter(pair.Value);
+            i++;
+        }
+        return ($"UPDATE {TableRef(schema.Table)} SET {string.Join(", ", sets)} WHERE {where}", parameters);
+    }
+
+    public (string Sql, Dictionary<string, object?> Parameters) BuildRecordDelete(RecordSchema schema, IReadOnlyDictionary<string, object> original)
+    {
+        var (where, parameters) = BuildRecordWhere(schema, original);
+        return ($"DELETE FROM {TableRef(schema.Table)} WHERE {where}", parameters);
+    }
+
+    /// <summary>Counts the records that match, so a change or delete only goes ahead when exactly one does.</summary>
+    private async Task<string?> CheckSingleMatchAsync(string database, RecordSchema schema, IReadOnlyDictionary<string, object> original)
+    {
+        var (where, parameters) = BuildRecordWhere(schema, original);
+        var count = Convert.ToInt64(Rows(await Sql.QueryAsync(database, $"SELECT count(*) FROM {TableRef(schema.Table)} WHERE {where}", parameters)
+            .ConfigureAwait(false)).Select(r => r[0]).FirstOrDefault() ?? 0, CultureInfo.InvariantCulture);
+        if (count == 1) return null;
+        if (count == 0) return "The record was not found. It may have been changed or deleted since the query ran; run the query again.";
+        return $"{count} identical records match, so one of them cannot be picked safely. Nothing was changed. " +
+               "Give the table a primary key to work with single records.";
+    }
+
+    public override async Task<CommandResult> InsertRecordAsync(string database, RecordSchema schema, IReadOnlyDictionary<string, object> values)
+    {
+        var (sql, parameters) = BuildRecordInsert(schema, values);
+        var result = await ExecuteAsync(database, sql, parameters).ConfigureAwait(false);
+        if (result.Success) await AfterRecordWrittenAsync(database, schema.Table).ConfigureAwait(false);
+        return result;
+    }
+
+    public override async Task<CommandResult> UpdateRecordAsync(string database, RecordSchema schema,
+        IReadOnlyDictionary<string, object> original, IReadOnlyDictionary<string, object> changes)
+    {
+        try
+        {
+            if (await CheckSingleMatchAsync(database, schema, original).ConfigureAwait(false) is { } problem) return Failed(problem);
+            var (sql, parameters) = BuildRecordUpdate(schema, original, changes);
+            var result = await ExecuteAsync(database, sql, parameters).ConfigureAwait(false);
+            if (result.Success) await AfterRecordWrittenAsync(database, schema.Table).ConfigureAwait(false);
+            return result;
+        }
+        catch (PostgresException ex) { return Failed(ex.MessageText); }
+        catch (NpgsqlException ex) { return Failed(ex.InnerException?.Message ?? ex.Message); }
+    }
+
+    public override async Task<CommandResult> DeleteRecordAsync(string database, RecordSchema schema, IReadOnlyDictionary<string, object> original)
+    {
+        try
+        {
+            if (await CheckSingleMatchAsync(database, schema, original).ConfigureAwait(false) is { } problem) return Failed(problem);
+            var (sql, parameters) = BuildRecordDelete(schema, original);
+            var result = await ExecuteAsync(database, sql, parameters).ConfigureAwait(false);
+            if (result.Success) await AfterRecordWrittenAsync(database, schema.Table).ConfigureAwait(false);
+            return result;
+        }
+        catch (PostgresException ex) { return Failed(ex.MessageText); }
+        catch (NpgsqlException ex) { return Failed(ex.InnerException?.Message ?? ex.Message); }
+    }
+
     // ------------------------------------------------------------------ server
 
     public const string VersionSql = "SELECT version()";

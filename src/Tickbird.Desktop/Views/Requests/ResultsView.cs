@@ -10,6 +10,7 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Tickbird.Core.Data;
 using Tickbird.Core.Mapping;
+using Tickbird.Core.Providers;
 using Tickbird.Core.Query;
 using Tickbird.Desktop.Services;
 
@@ -95,6 +96,10 @@ public sealed class ResultsView : UserControl
                 Item("Copy Row", () => CopyRows(CurrentRow().ToArray())),
                 Item("Copy Selected Rows", () => CopyRows(SelectedIndices().OrderBy(i => i).ToArray())),
                 new Separator(),
+                Item("Insert Record…", () => GuardRecord(InsertRecordAsync)),
+                Item("Edit Record…", () => GuardRecord(EditRecordAsync)),
+                Item("Delete Record…", () => GuardRecord(DeleteRecordAsync)),
+                new Separator(),
                 Item("Filter to This Value", () => FilterByCell(MapConditionOperator.Equals)),
                 Item("Exclude This Value", () => FilterByCell(MapConditionOperator.NotEquals)),
                 Item("Clear Filter", ClearFilter),
@@ -137,6 +142,9 @@ public sealed class ResultsView : UserControl
         var header = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
         DockPanel.SetDock(modes, Dock.Right);
         header.Children.Add(modes);
+        InitializeRecordButtons();
+        DockPanel.SetDock(recordBar, Dock.Right);
+        header.Children.Add(recordBar);
         var filterBar = BuildFilterBar();
         DockPanel.SetDock(filterBar, Dock.Left);
         header.Children.Add(filterBar);
@@ -166,6 +174,104 @@ public sealed class ResultsView : UserControl
 
     public DatabaseClient? Client { get; set; }
     public string? Database { get; set; }
+
+    // ------------------------------------------------------------------ records (insert, edit, delete)
+
+    private readonly Button insertButton = RecordButton("RecordInsert", "＋ Insert", "Insert a new record into the table (asks for confirmation)");
+    private readonly Button editButton = RecordButton("RecordEdit", "✎ Edit", "Change the selected record (asks for confirmation)");
+    private readonly Button deleteButton = RecordButton("RecordDelete", "✕ Delete", "Delete the selected record (asks for confirmation)");
+    private readonly StackPanel recordBar = new() { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8, 0, 0, 0), IsVisible = false, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+
+    /// <summary>The query that produced this result; records can be edited when it is a plain SELECT from one table.</summary>
+    public string? Query { get; set; }
+
+    /// <summary>Raised after a record was inserted, changed or deleted, so the query can run again.</summary>
+    public event EventHandler? RecordsChanged;
+
+    /// <summary>The table the result was read from, or null when its rows cannot be edited (joins, aggregates, several statements).</summary>
+    public string? EditableTable
+    {
+        get
+        {
+            if (Database == null || Supported() == DatabaseCapabilities.None) return null;
+            var name = RecordQuery.FindTable(Query);
+            if (name == null) return null;
+            var parts = RecordQuery.Parts(name);
+            if (parts.Count == 1) return parts[0];
+            // schema.table works for the PostgreSQL family; an InfluxQL retention policy in the name does not.
+            var schemas = Client?.Connection.Kind is DatabaseKind.TimescaleDb or DatabaseKind.CrateDb;
+            return schemas && parts.Count == 2 ? parts[0] + "." + parts[1] : null;
+        }
+    }
+
+    private DatabaseCapabilities Supported() => RecordEditing.Supported(Client);
+
+    private static Button RecordButton(string name, string text, string tip)
+    {
+        var button = new Button { Name = name, Content = text, Padding = new Thickness(8, 2), MinHeight = 26, FontSize = 12 };
+        ToolTip.SetTip(button, tip);
+        return button;
+    }
+
+    private void InitializeRecordButtons()
+    {
+        recordBar.Children.Add(insertButton);
+        recordBar.Children.Add(editButton);
+        recordBar.Children.Add(deleteButton);
+        insertButton.Click += async (_, _) => await GuardRecord(InsertRecordAsync);
+        editButton.Click += async (_, _) => await GuardRecord(EditRecordAsync);
+        deleteButton.Click += async (_, _) => await GuardRecord(DeleteRecordAsync);
+        grid.SelectionChanged += (_, _) => UpdateRecordButtons();
+    }
+
+    /// <summary>Shows the buttons the database supports for this result, and enables Edit and Delete while a row is selected.</summary>
+    public void UpdateRecordButtons()
+    {
+        var supported = Supported();
+        var table = last == null ? null : EditableTable;
+        var on = table != null;
+        recordBar.IsVisible = on;
+        insertButton.IsVisible = supported.HasFlag(DatabaseCapabilities.InsertRecords);
+        editButton.IsVisible = supported.HasFlag(DatabaseCapabilities.EditRecords);
+        deleteButton.IsVisible = supported.HasFlag(DatabaseCapabilities.DeleteRecords);
+        var hasRow = grid.SelectedItem is ResultRow;
+        editButton.IsEnabled = deleteButton.IsEnabled = hasRow;
+    }
+
+    private async Task GuardRecord(Func<Task> action)
+    {
+        try { await action(); }
+        catch (Exception ex) { if (TopLevel.GetTopLevel(this) is Window w) await Dialogs.ShowExceptionAsync(w, ex); }
+    }
+
+    private Dictionary<string, object> SelectedRecord()
+    {
+        var record = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        if (shown == null || grid.SelectedItem is not ResultRow row) return record;
+        var cells = shown.Values[row.Index];
+        for (var i = 0; i < shown.Columns.Count && i < cells.Count; i++) record[shown.Columns[i]] = cells[i]!;
+        return record;
+    }
+
+    private async Task InsertRecordAsync()
+    {
+        if (Client == null || Database == null || EditableTable is not { } table || TopLevel.GetTopLevel(this) is not Window owner) return;
+        if (await RecordEditing.InsertAsync(owner, Client, Database, table)) RecordsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task EditRecordAsync()
+    {
+        if (Client == null || Database == null || shown == null || EditableTable is not { } table || TopLevel.GetTopLevel(this) is not Window owner) return;
+        if (grid.SelectedItem is not ResultRow) return;
+        if (await RecordEditing.EditAsync(owner, Client, Database, table, shown.Columns, SelectedRecord())) RecordsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task DeleteRecordAsync()
+    {
+        if (Client == null || Database == null || shown == null || EditableTable is not { } table || TopLevel.GetTopLevel(this) is not Window owner) return;
+        if (grid.SelectedItem is not ResultRow) return;
+        if (await RecordEditing.DeleteAsync(owner, Client, Database, table, shown.Columns, SelectedRecord())) RecordsChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public int RowCount => last?.Values.Count ?? 0;
 
@@ -224,6 +330,7 @@ public sealed class ResultsView : UserControl
             });
         ApplyFilter();
         ApplyMode();
+        UpdateRecordButtons();
         return result.Values.Count;
     }
 

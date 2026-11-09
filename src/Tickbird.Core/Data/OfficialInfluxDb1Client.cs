@@ -305,6 +305,19 @@ namespace Tickbird.Core.Data
             return SuccessResponse();
         }
 
+        public override Task<RecordSchema> GetRecordSchemaAsync(string database, string table) =>
+            LineProtocolRecords.GetSchemaAsync(this, database, table);
+
+        public override Task<CommandResult> InsertRecordAsync(string database, RecordSchema schema, IReadOnlyDictionary<string, object> values) =>
+            LineProtocolRecords.InsertAsync(this, database, schema, values);
+
+        public override Task<CommandResult> UpdateRecordAsync(string database, RecordSchema schema,
+            IReadOnlyDictionary<string, object> original, IReadOnlyDictionary<string, object> changes) =>
+            LineProtocolRecords.UpdateAsync(this, database, schema, true, original, changes);
+
+        public override Task<CommandResult> DeleteRecordAsync(string database, RecordSchema schema, IReadOnlyDictionary<string, object> original) =>
+            LineProtocolRecords.DeleteAsync(this, database, schema, original);
+
         public override async Task<PingResponse> PingAsync()
         {
             var watch = Stopwatch.StartNew();

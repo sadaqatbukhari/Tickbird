@@ -151,6 +151,16 @@ namespace Tickbird.Core.Data
             return await WriteAsync(database, new DataPoint(measurement, tags, fields, timeStamp), retentionPolicy);
         }
 
+        public override Task<RecordSchema> GetRecordSchemaAsync(string database, string table) =>
+            LineProtocolRecords.GetSchemaAsync(this, database, table);
+
+        public override Task<CommandResult> InsertRecordAsync(string database, RecordSchema schema, IReadOnlyDictionary<string, object> values) =>
+            LineProtocolRecords.InsertAsync(this, database, schema, values);
+
+        public override Task<CommandResult> UpdateRecordAsync(string database, RecordSchema schema,
+            IReadOnlyDictionary<string, object> original, IReadOnlyDictionary<string, object> changes) =>
+            LineProtocolRecords.UpdateAsync(this, database, schema, false, original, changes);
+
         public override async Task<CommandResult> WriteAsync(
             string database, DataPoint point, string retentionPolicy = null)
         {

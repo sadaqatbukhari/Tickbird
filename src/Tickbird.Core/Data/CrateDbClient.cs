@@ -28,7 +28,8 @@ public sealed class CrateDbClient : PostgresClientBase
         DatabaseCapabilities.Users | DatabaseCapabilities.Privileges | DatabaseCapabilities.RunningQueries
         | DatabaseCapabilities.Statistics | DatabaseCapabilities.Diagnostics | DatabaseCapabilities.TagKeys
         | DatabaseCapabilities.TagValues | DatabaseCapabilities.FieldKeys | DatabaseCapabilities.Series
-        | DatabaseCapabilities.DropSeries | DatabaseCapabilities.DropMeasurement | DatabaseCapabilities.WriteData;
+        | DatabaseCapabilities.DropSeries | DatabaseCapabilities.DropMeasurement | DatabaseCapabilities.WriteData
+        | DatabaseCapabilities.AllRecordOperations;
 
     /// <summary>How CrateDB looks in the app.</summary>
     public static readonly DatabaseProfile Profile = new(DatabaseKind.CrateDb, "CrateDB", 5432, isSql: true,
@@ -121,6 +122,20 @@ public sealed class CrateDbClient : PostgresClientBase
         "WHERE table_schema = @schema AND table_name = @table AND " + RealColumns + " ORDER BY ordinal_position";
 
     protected override string ColumnsQuery => CrateColumnsSql;
+
+    public const string CratePrimaryKeySql =
+        "SELECT k.column_name FROM information_schema.key_column_usage k JOIN information_schema.table_constraints t " +
+        "ON t.constraint_name = k.constraint_name AND t.table_schema = k.table_schema AND t.table_name = k.table_name " +
+        "WHERE t.constraint_type = 'PRIMARY KEY' AND k.table_schema = @schema AND k.table_name = @table ORDER BY k.ordinal_position";
+
+    protected override string PrimaryKeyQuery => CratePrimaryKeySql;
+
+    /// <summary>CrateDB shows new and changed rows to queries only after a refresh.</summary>
+    protected override async Task AfterRecordWrittenAsync(string database, string table)
+    {
+        try { await Sql.ExecuteAsync(database, "REFRESH TABLE " + TableRef(table)).ConfigureAwait(false); }
+        catch (Exception ex) when (ex is Npgsql.NpgsqlException or InvalidOperationException) { /* the write itself succeeded */ }
+    }
 
     public override string SchemaSql =>
         "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns " +

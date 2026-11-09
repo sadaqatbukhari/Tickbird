@@ -48,6 +48,14 @@ public enum DatabaseCapabilities
     WriteData = 1 << 16,
     /// <summary>Makes a user an administrator (superuser) or takes that away. A database without it shows users read-only in that respect.</summary>
     AdministratorRights = 1 << 17,
+    /// <summary>Changes a single record (row or point) of a query result.</summary>
+    EditRecords = 1 << 18,
+    /// <summary>Inserts a single record.</summary>
+    InsertRecords = 1 << 19,
+    /// <summary>Deletes a single record.</summary>
+    DeleteRecords = 1 << 20,
+    /// <summary>All three record operations.</summary>
+    AllRecordOperations = EditRecords | InsertRecords | DeleteRecords,
 }
 
 /// <summary>How a connection signs in.</summary>

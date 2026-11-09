@@ -282,7 +282,13 @@ public sealed class QueryView : RequestView
         var count = 0;
         foreach (var series in allResults)
         {
-            var view = new ResultsView { Client = Client, Database = Database, ChartSettings = chartSettings, AllResults = allResults };
+            var view = new ResultsView { Client = Client, Database = Database, ChartSettings = chartSettings, AllResults = allResults, Query = query };
+            // After a record is inserted, changed or deleted the query runs again, so the grid shows what is stored.
+            view.RecordsChanged += async (_, _) =>
+            {
+                try { await ExecuteAsync(); }
+                catch (Exception ex) { if (OwnerWindow != null) await Dialogs.ShowExceptionAsync(OwnerWindow, ex); }
+            };
             total += view.Show(series);
             var heading = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8 };
             heading.Children.Add(new Image { Source = ShellIcons.Get("Measurement"), Width = 15, Height = 15 });
